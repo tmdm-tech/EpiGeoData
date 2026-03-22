@@ -10,8 +10,8 @@ RUN flutter pub get
 # Copiar o restante do código
 COPY . .
 
-# Build web em modo release com suporte a CanvasKit (melhor renderização)
-RUN flutter build web --release --web-renderer canvaskit
+# Build web em modo release
+RUN flutter build web --release
 
 # ── Stage 2: Serve ───────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine
