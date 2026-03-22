@@ -1,0 +1,2 @@
+# Arquivo de compatibilidade para plataformas que detectam requirements.txt
+# Deploy oficial deste projeto: Docker + Flutter Web (render.yaml)
