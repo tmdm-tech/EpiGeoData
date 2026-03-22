@@ -6,12 +6,17 @@
     <title>EpiGeoData</title>
     <style>
       :root {
-        --bg-1: #f4f8ff;
-        --bg-2: #e9f1ff;
-        --card: #ffffff;
-        --text: #13203a;
-        --muted: #46618f;
-        --accent: #1f6feb;
+        --bg-1: #2b0f59;
+        --bg-2: #4e1a8c;
+        --bg-3: #7f3fd3;
+        --ink: #f4edff;
+        --panel: rgba(17, 9, 34, 0.68);
+        --panel-border: rgba(220, 198, 255, 0.22);
+        --chip: rgba(255, 255, 255, 0.08);
+        --chip-hover: rgba(185, 126, 255, 0.35);
+        --accent: #d79bff;
+        --accent-2: #8cf0ff;
+        --ok: #90ffba;
       }
 
       * {
@@ -21,114 +26,457 @@
       body {
         margin: 0;
         min-height: 100vh;
-        font-family: "Segoe UI", Tahoma, sans-serif;
-        color: var(--text);
-        background: radial-gradient(circle at top left, var(--bg-1), var(--bg-2));
-        display: grid;
-        place-items: center;
+        font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 8% 12%, rgba(180, 112, 255, 0.45), transparent 28%),
+          radial-gradient(circle at 90% 80%, rgba(102, 255, 248, 0.18), transparent 35%),
+          linear-gradient(125deg, var(--bg-1), var(--bg-2) 48%, var(--bg-3));
         padding: 24px;
       }
 
       main {
-        width: min(860px, 100%);
-        background: var(--card);
-        border: 1px solid #d7e3fb;
-        border-radius: 18px;
-        box-shadow: 0 18px 48px rgba(19, 32, 58, 0.12);
-        padding: 30px;
-      }
-
-      h1 {
-        margin: 0 0 10px;
-        font-size: clamp(28px, 5vw, 42px);
-        line-height: 1.1;
-      }
-
-      p {
-        margin: 0;
-        color: var(--muted);
-        font-size: 16px;
-      }
-
-      section {
-        margin-top: 24px;
+        width: min(1180px, 100%);
+        margin: 0 auto;
         display: grid;
-        gap: 14px;
+        gap: 18px;
       }
 
-      article {
-        border: 1px solid #deebff;
+      .hero {
+        border: 1px solid var(--panel-border);
+        border-radius: 24px;
+        background: var(--panel);
+        box-shadow: 0 18px 46px rgba(6, 2, 16, 0.38);
+        backdrop-filter: blur(6px);
+        padding: 24px;
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        gap: 24px;
+        align-items: center;
+      }
+
+      .title {
+        margin: 0;
+        font-size: clamp(30px, 5vw, 52px);
+        letter-spacing: 0.5px;
+        line-height: 1.03;
+      }
+
+      .subtitle {
+        margin: 10px 0 0;
+        color: #e6d7ff;
+        font-size: clamp(14px, 2vw, 18px);
+        max-width: 700px;
+      }
+
+      .dashboard {
+        border: 1px solid var(--panel-border);
+        border-radius: 24px;
+        background: var(--panel);
+        box-shadow: 0 16px 44px rgba(6, 2, 16, 0.34);
+        padding: 22px;
+        display: grid;
+        grid-template-columns: 1.2fr 0.9fr;
+        gap: 18px;
+      }
+
+      .left-pane {
+        display: grid;
+        gap: 16px;
+      }
+
+      .card {
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.05);
+        padding: 14px;
+      }
+
+      .card h2 {
+        margin: 0;
+        font-size: 16px;
+        letter-spacing: 0.2px;
+      }
+
+      .card p {
+        margin: 6px 0 0;
+        color: #dfcbff;
+        font-size: 13px;
+      }
+
+      .chip-grid {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .chip {
+        appearance: none;
+        border: 1px solid rgba(217, 188, 255, 0.35);
         border-radius: 12px;
-        padding: 14px 16px;
-        background: #f8fbff;
+        background: var(--chip);
+        color: var(--ink);
+        text-align: left;
+        font-size: 13px;
+        line-height: 1.35;
+        padding: 10px 12px;
+        cursor: pointer;
+        transition: 160ms ease;
       }
 
-      h2 {
-        margin: 0 0 8px;
-        font-size: 18px;
-      }
-
-      ul {
-        margin: 8px 0 0;
-        padding-left: 20px;
-      }
-
-      li {
-        margin: 4px 0;
-      }
-
-      .tag {
-        display: inline-block;
-        margin-top: 18px;
-        font-size: 12px;
+      .chip strong {
+        display: block;
         font-weight: 700;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        color: #0c4fb8;
-        background: #dbe9ff;
-        border-radius: 999px;
-        padding: 6px 10px;
+        color: #fff;
       }
 
-      .cta {
-        margin-top: 20px;
-        display: inline-block;
-        text-decoration: none;
-        color: #fff;
-        background: var(--accent);
-        padding: 10px 14px;
-        border-radius: 10px;
-        font-weight: 600;
+      .chip span {
+        color: #dcc4ff;
+      }
+
+      .chip:hover,
+      .chip.active {
+        background: var(--chip-hover);
+        border-color: rgba(226, 203, 255, 0.85);
+        transform: translateY(-1px);
+      }
+
+      .status {
+        margin-top: 12px;
+        border: 1px solid rgba(194, 248, 217, 0.42);
+        border-radius: 12px;
+        background: rgba(56, 255, 155, 0.1);
+        padding: 12px;
+      }
+
+      .status small {
+        display: block;
+        color: #cbffe2;
+        opacity: 0.9;
+      }
+
+      .status strong {
+        display: block;
+        margin-top: 4px;
+        color: var(--ok);
+      }
+
+      .assistant {
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04);
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .robot-wrap {
+        display: grid;
+        place-items: center;
+      }
+
+      .robot {
+        width: 180px;
+        height: 220px;
+        position: relative;
+      }
+
+      .hair {
+        position: absolute;
+        left: 25px;
+        top: 6px;
+        width: 130px;
+        height: 130px;
+        border-radius: 60% 60% 44% 46%;
+        background: linear-gradient(160deg, #121423, #40336f 58%, #5c4998);
+        border: 2px solid rgba(255, 255, 255, 0.15);
+      }
+
+      .face {
+        position: absolute;
+        left: 46px;
+        top: 40px;
+        width: 90px;
+        height: 106px;
+        border-radius: 45% 45% 42% 42%;
+        background: linear-gradient(180deg, #f9dcff, #c6b2ff);
+        border: 2px solid rgba(255, 255, 255, 0.45);
+      }
+
+      .eye {
+        position: absolute;
+        top: 42px;
+        width: 14px;
+        height: 10px;
+        border-radius: 999px;
+        background: #2f1d56;
+        animation: blink 4.8s infinite;
+      }
+
+      .eye.left {
+        left: 20px;
+      }
+
+      .eye.right {
+        right: 20px;
+      }
+
+      .mouth {
+        position: absolute;
+        left: 35px;
+        top: 73px;
+        width: 20px;
+        height: 8px;
+        border-radius: 0 0 14px 14px;
+        border-bottom: 3px solid #8248d3;
+      }
+
+      .neck {
+        position: absolute;
+        left: 77px;
+        top: 146px;
+        width: 28px;
+        height: 18px;
+        border-radius: 8px;
+        background: #cfbdff;
+      }
+
+      .body {
+        position: absolute;
+        left: 45px;
+        top: 160px;
+        width: 92px;
+        height: 56px;
+        border-radius: 14px;
+        background: linear-gradient(150deg, #8a6de8, #4f2ea0);
+        border: 2px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .badge {
+        position: absolute;
+        left: 10px;
+        top: 14px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: linear-gradient(130deg, var(--accent-2), #85b5ff);
+        box-shadow: 0 0 14px rgba(130, 222, 255, 0.6);
+      }
+
+      .speech {
+        border-radius: 12px;
+        border: 1px solid rgba(196, 157, 255, 0.4);
+        background: rgba(75, 40, 136, 0.58);
+        color: #f5ecff;
+        padding: 10px 12px;
+        font-size: 13px;
+        min-height: 78px;
+      }
+
+      .speech strong {
+        display: block;
+        color: var(--accent);
+        margin-bottom: 5px;
+      }
+
+      .hint {
+        margin: 0;
+        font-size: 12px;
+        color: #d3beff;
+      }
+
+      @keyframes blink {
+        0%,
+        46%,
+        50%,
+        100% {
+          transform: scaleY(1);
+        }
+        48% {
+          transform: scaleY(0.1);
+        }
+      }
+
+      @media (max-width: 980px) {
+        .hero,
+        .dashboard {
+          grid-template-columns: 1fr;
+        }
+
+        .robot {
+          width: 150px;
+          height: 190px;
+        }
+
+        .chip-grid {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
   <body>
     <main>
-      <h1>EpiGeoData</h1>
-      <p>Interface em Python 3 (Flask) para visualizacao de camadas e operacao em campo.</p>
-
-      <section>
-        <article>
-          <h2>Camadas prontas para publicacao</h2>
-          <ul>
-            <li>Base cartografica</li>
-            <li>Vigilancia epidemiologica</li>
-            <li>Ambiente e logistica de campo</li>
-          </ul>
-        </article>
-
-        <article>
-          <h2>Checklist para execucao</h2>
-          <ul>
-            <li>Preparar dados</li>
-            <li>Validar consistencia</li>
-            <li>Publicar e monitorar camadas</li>
-          </ul>
-        </article>
+      <section class="hero">
+        <div class="robot-wrap">
+          <div class="robot" aria-label="Robo virtual assistente">
+            <div class="hair"></div>
+            <div class="face">
+              <div class="eye left"></div>
+              <div class="eye right"></div>
+              <div class="mouth"></div>
+            </div>
+            <div class="neck"></div>
+            <div class="body">
+              <div class="badge"></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h1 class="title">EpiGeoData</h1>
+          <p class="subtitle">
+            Painel geoespacial com sobreposicao de mapas para vigilancia epidemiologica e variaveis climaticas.
+            Selecione um tema para atualizar os agravos monitorados e o agente etiologico associado.
+          </p>
+        </div>
       </section>
 
-      <span class="tag">runtime python 3</span>
-      <a class="cta" href="/">Atualizar painel</a>
+      <section class="dashboard">
+        <div class="left-pane">
+          <article class="card">
+            <h2>Sobreposicao de mapas: doencas e agravos</h2>
+            <p>Clique em uma doenca para destacar o agravo e o agente etiologico.</p>
+            <div class="chip-grid" id="diseaseButtons">
+              <button class="chip active" data-type="doenca" data-name="Sindrome Congenita da Zika" data-agent="Virus Zika" data-note="Agravos neurologicos e malformacoes congenitas em recem-nascidos.">
+                <strong>Sindrome Congenita da Zika</strong>
+                <span>Agente etiologico: Virus Zika</span>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Covid 19" data-agent="SARS-CoV-2" data-note="Agravos respiratorios agudos, sindrome gripal e complicacoes sistemicas.">
+                <strong>Covid 19</strong>
+                <span>Agente etiologico: SARS-CoV-2</span>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Dengue" data-agent="Virus da Dengue (DENV 1-4)" data-note="Agravos febris com risco de formas graves e choque.">
+                <strong>Dengue</strong>
+                <span>Agente etiologico: Virus da Dengue (DENV 1-4)</span>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Esquistossomose" data-agent="Schistosoma mansoni" data-note="Agravos hepatointestinais cronicos associados a exposicao hidrica.">
+                <strong>Esquistossomose</strong>
+                <span>Agente etiologico: Schistosoma mansoni</span>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Tuberculose" data-agent="Mycobacterium tuberculosis" data-note="Agravos pulmonares persistentes e transmissao comunitaria.">
+                <strong>Tuberculose</strong>
+                <span>Agente etiologico: Mycobacterium tuberculosis</span>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Monkeypox" data-agent="Virus mpox" data-note="Agravos dermatologicos e sindromes febris com vigilancia de contatos.">
+                <strong>Monkeypox</strong>
+                <span>Agente etiologico: Virus mpox</span>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Chikungunya" data-agent="Virus Chikungunya" data-note="Agravos febris com artralgia intensa e potencial cronificacao.">
+                <strong>Chikungunya</strong>
+                <span>Agente etiologico: Virus Chikungunya</span>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Febre Oropouche" data-agent="Virus Oropouche" data-note="Agravos febris com surtos em areas de transicao urbano-rural.">
+                <strong>Febre Oropouche</strong>
+                <span>Agente etiologico: Virus Oropouche</span>
+              </button>
+            </div>
+          </article>
+
+          <article class="card">
+            <h2>Camadas de variaveis climaticas</h2>
+            <p>Ative uma camada para compor a analise espacial com os agravos.</p>
+            <div class="chip-grid" id="climateButtons">
+              <button class="chip" data-type="clima" data-name="Precipitacao" data-note="Mapa de acumulado de chuva para correlacao com vetores e surtos.">
+                <strong>Precipitacao</strong>
+                <span>Camada climatica</span>
+              </button>
+              <button class="chip" data-type="clima" data-name="Temperatura" data-note="Distribuicao termica para leitura de sazonalidade dos agravos.">
+                <strong>Temperatura</strong>
+                <span>Camada climatica</span>
+              </button>
+              <button class="chip" data-type="clima" data-name="Queimadas" data-note="Focos de calor e impactos ambientais na vulnerabilidade em saude.">
+                <strong>Queimadas</strong>
+                <span>Camada climatica</span>
+              </button>
+              <button class="chip" data-type="clima" data-name="Cobertura vegetal" data-note="Fragmentacao vegetal e contexto ecologico dos territrios.">
+                <strong>Cobertura vegetal</strong>
+                <span>Camada climatica</span>
+              </button>
+            </div>
+          </article>
+        </div>
+
+        <aside class="assistant">
+          <div class="speech" id="speechBox">
+            <strong>Assistente EpiGeo</strong>
+            Selecione uma doenca ou variavel climatica. Eu atualizo os agravos e sugero a leitura espacial mais relevante.
+          </div>
+
+          <div class="status" id="statusBox">
+            <small>Tema ativo</small>
+            <strong>Sindrome Congenita da Zika • Agente: Virus Zika</strong>
+          </div>
+
+          <p class="hint">
+            Dica: combine um agravo com uma camada climatica para gerar hipoteses de risco territorial.
+          </p>
+        </aside>
+      </section>
     </main>
+
+    <script>
+      const statusBox = document.getElementById("statusBox");
+      const speechBox = document.getElementById("speechBox");
+
+      function activateButton(groupId, button) {
+        const group = document.getElementById(groupId);
+        group.querySelectorAll(".chip").forEach((el) => el.classList.remove("active"));
+        button.classList.add("active");
+      }
+
+      function updateAssistant(button) {
+        const type = button.dataset.type;
+        const name = button.dataset.name;
+        const note = button.dataset.note;
+        const agent = button.dataset.agent;
+
+        if (type === "doenca") {
+          statusBox.innerHTML = "<small>Tema ativo</small><strong>" + name + " • Agente: " + agent + "</strong>";
+          speechBox.innerHTML =
+            "<strong>Assistente EpiGeo</strong>" +
+            "Agravos de <b>" +
+            name +
+            "</b> selecionados. " +
+            note +
+            " Agente etiologico monitorado: <b>" +
+            agent +
+            "</b>.";
+          return;
+        }
+
+        statusBox.innerHTML = "<small>Camada climatica ativa</small><strong>" + name + "</strong>";
+        speechBox.innerHTML =
+          "<strong>Assistente EpiGeo</strong>" +
+          "Camada de <b>" +
+          name +
+          "</b> ativada para sobreposicao dos mapas. " +
+          note +
+          "";
+      }
+
+      document.querySelectorAll("#diseaseButtons .chip").forEach((button) => {
+        button.addEventListener("click", () => {
+          activateButton("diseaseButtons", button);
+          updateAssistant(button);
+        });
+      });
+
+      document.querySelectorAll("#climateButtons .chip").forEach((button) => {
+        button.addEventListener("click", () => {
+          activateButton("climateButtons", button);
+          updateAssistant(button);
+        });
+      });
+    </script>
   </body>
 </html>
