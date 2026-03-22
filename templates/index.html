@@ -561,18 +561,18 @@
       };
 
       const geresColors = {
-        "I GERES": "#ffb3ff",
-        "II GERES": "#c4b5ff",
-        "III GERES": "#9ad7ff",
-        "IV GERES": "#8dffcf",
-        "V GERES": "#ffe49c",
-        "VI GERES": "#ffb1c3",
-        "VII GERES": "#d8ffb2",
-        "VIII GERES": "#a5f0ff",
-        "IX GERES": "#e0c0ff",
-        "X GERES": "#ffd6a8",
-        "XI GERES": "#d2ffea",
-        "XII GERES": "#b9d0ff"
+        "I GERES": "#3d1666",
+        "II GERES": "#4a1c78",
+        "III GERES": "#56218a",
+        "IV GERES": "#62269a",
+        "V GERES": "#6d2ca8",
+        "VI GERES": "#7831b4",
+        "VII GERES": "#8438be",
+        "VIII GERES": "#8f3ec8",
+        "IX GERES": "#9a45d0",
+        "X GERES": "#a24ed6",
+        "XI GERES": "#ab57dd",
+        "XII GERES": "#b461e3"
       };
 
       let map;
@@ -675,10 +675,10 @@
 
         municipioLayer = L.geoJSON(geojson, {
           style: {
-            color: "#ffe9ff",
-            weight: 2.5,
-            fillColor: "#cc8fff",
-            fillOpacity: 0.25
+            color: "#f1d8ff",
+            weight: 2.2,
+            fillColor: "#3f1868",
+            fillOpacity: 0.48
           }
         }).addTo(map);
 
@@ -715,10 +715,10 @@
           const geojson = await response.json();
           const layer = L.geoJSON(geojson, {
             style: {
-              color: "#ffffff",
-              weight: 1.3,
+              color: "#f3deff",
+              weight: 1.6,
               fillColor: color,
-              fillOpacity: 0.24
+              fillOpacity: 0.42
             }
           });
           layer.bindPopup(geresName + " - " + item.nome);
