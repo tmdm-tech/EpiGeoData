@@ -19,9 +19,7 @@ FROM nginx:1.27-alpine
 # Copiar os arquivos do build para o Nginx
 COPY --from=build /app/build/web /usr/share/nginx/html
 
-# Configuração customizada para SPA (Flutter Web)
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Configuração customizada para SPA (Flutter Web) com porta dinâmica
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 10000
