@@ -21,3 +21,9 @@ flutter run
 ```bash
 flutter test
 ```
+
+## Implantacao
+
+- O deploy oficial deste projeto e feito com Docker via Render (configurado em `render.yaml`).
+- O arquivo `requirements.txt` existe apenas para compatibilidade com detectores de build e nao define o runtime principal do app.
+- A cada push na branch `main`, o Render executa o auto deploy.
