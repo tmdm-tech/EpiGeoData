@@ -1,0 +1,16 @@
+# Render Blueprint — EpigeoData
+# Documentação: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: epigeodata
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free              # altere para "starter" ou "standard" quando precisar de mais recursos
+    healthCheckPath: /
+    autoDeploy: true        # deploy automático a cada push na branch principal
+
+    # Variáveis de ambiente (adicione aqui quando precisar de backend/API)
+    envVars:
+      - key: FLUTTER_ENV
+        value: production
