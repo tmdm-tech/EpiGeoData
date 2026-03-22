@@ -322,6 +322,20 @@
         font-size: 13px;
       }
 
+      .filters input {
+        width: 100%;
+        border: 1px solid rgba(217, 188, 255, 0.35);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.1);
+        color: #f6eeff;
+        padding: 9px 10px;
+        font-size: 13px;
+      }
+
+      .filters input::placeholder {
+        color: #dbc4ff;
+      }
+
       .filters option {
         color: #1d1230;
       }
@@ -486,6 +500,10 @@
                 </select>
               </label>
               <label>
+                Busca por municipio
+                <input id="municipioSearch" type="search" placeholder="Digite para filtrar em tempo real" />
+              </label>
+              <label>
                 Municipio
                 <select id="municipioSelect">
                   <option value="">Todos os municipios</option>
@@ -524,6 +542,7 @@
       const statusBox = document.getElementById("statusBox");
       const speechBox = document.getElementById("speechBox");
       const geresSelect = document.getElementById("geresSelect");
+      const municipioSearch = document.getElementById("municipioSearch");
       const municipioSelect = document.getElementById("municipioSelect");
 
       const geresMunicipios = {
@@ -561,6 +580,7 @@
       let municipioLayer;
       let geresLayerGroup;
       let municipioCatalog = [];
+      let activeGeres = "ALL";
 
       function activateButton(groupId, button) {
         const group = document.getElementById(groupId);
@@ -738,12 +758,25 @@
 
       function municipiosByGeres(geresName) {
         if (!geresName || geresName === "ALL") {
-          return municipioCatalog;
+          return [...municipioCatalog];
         }
 
         const nomes = geresMunicipios[geresName] || [];
         const normalizedSet = new Set(nomes.map((name) => normalizeName(name)));
-        return municipioCatalog.filter((m) => normalizedSet.has(normalizeName(m.nome)));
+        const mapped = municipioCatalog.filter((m) => normalizedSet.has(normalizeName(m.nome)));
+        const remaining = municipioCatalog.filter((m) => !normalizedSet.has(normalizeName(m.nome)));
+        return [...mapped, ...remaining];
+      }
+
+      function applyMunicipioFilters() {
+        const query = normalizeName(municipioSearch.value || "");
+        const base = municipiosByGeres(activeGeres);
+        const filtered =
+          query.length === 0
+            ? base
+            : base.filter((m) => normalizeName(m.nome).includes(query));
+
+        fillMunicipioSelect(filtered);
       }
 
       async function loadPernambucoBase() {
@@ -773,23 +806,28 @@
         );
         municipioCatalog = await municipiosResponse.json();
         municipioCatalog.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-        fillMunicipioSelect(municipioCatalog);
+        applyMunicipioFilters();
       }
 
       geresSelect.addEventListener("change", async () => {
-        const geres = geresSelect.value;
-        const filtered = municipiosByGeres(geres);
-        fillMunicipioSelect(filtered);
-        await drawGeres(geres);
+        activeGeres = geresSelect.value;
+        applyMunicipioFilters();
+        await drawGeres(activeGeres);
 
-        if (geres !== "ALL") {
-          statusBox.innerHTML = "<small>GERES ativa</small><strong>" + geres + "</strong>";
+        if (activeGeres !== "ALL") {
+          statusBox.innerHTML = "<small>GERES ativa</small><strong>" + activeGeres + "</strong>";
           speechBox.innerHTML =
             "<strong>Assistente EpiGeo</strong>" +
             "GERES selecionada: <b>" +
-            geres +
-            "</b>. Agora escolha um municipio para detalhar o agravo em tempo real.";
+            activeGeres +
+            "</b>. Lista de municipios completa disponivel para selecao em tempo real.";
+        } else {
+          statusBox.innerHTML = "<small>GERES ativa</small><strong>Todas as GERES</strong>";
         }
+      });
+
+      municipioSearch.addEventListener("input", () => {
+        applyMunicipioFilters();
       });
 
       municipioSelect.addEventListener("change", async () => {
