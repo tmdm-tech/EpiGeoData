@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EpiGeoData</title>
+    <style>
+      :root {
+        --bg-1: #f4f8ff;
+        --bg-2: #e9f1ff;
+        --card: #ffffff;
+        --text: #13203a;
+        --muted: #46618f;
+        --accent: #1f6feb;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Segoe UI", Tahoma, sans-serif;
+        color: var(--text);
+        background: radial-gradient(circle at top left, var(--bg-1), var(--bg-2));
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      main {
+        width: min(860px, 100%);
+        background: var(--card);
+        border: 1px solid #d7e3fb;
+        border-radius: 18px;
+        box-shadow: 0 18px 48px rgba(19, 32, 58, 0.12);
+        padding: 30px;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: clamp(28px, 5vw, 42px);
+        line-height: 1.1;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      section {
+        margin-top: 24px;
+        display: grid;
+        gap: 14px;
+      }
+
+      article {
+        border: 1px solid #deebff;
+        border-radius: 12px;
+        padding: 14px 16px;
+        background: #f8fbff;
+      }
+
+      h2 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+
+      ul {
+        margin: 8px 0 0;
+        padding-left: 20px;
+      }
+
+      li {
+        margin: 4px 0;
+      }
+
+      .tag {
+        display: inline-block;
+        margin-top: 18px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #0c4fb8;
+        background: #dbe9ff;
+        border-radius: 999px;
+        padding: 6px 10px;
+      }
+
+      .cta {
+        margin-top: 20px;
+        display: inline-block;
+        text-decoration: none;
+        color: #fff;
+        background: var(--accent);
+        padding: 10px 14px;
+        border-radius: 10px;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>EpiGeoData</h1>
+      <p>Interface em Python 3 (Flask) para visualizacao de camadas e operacao em campo.</p>
+
+      <section>
+        <article>
+          <h2>Camadas prontas para publicacao</h2>
+          <ul>
+            <li>Base cartografica</li>
+            <li>Vigilancia epidemiologica</li>
+            <li>Ambiente e logistica de campo</li>
+          </ul>
+        </article>
+
+        <article>
+          <h2>Checklist para execucao</h2>
+          <ul>
+            <li>Preparar dados</li>
+            <li>Validar consistencia</li>
+            <li>Publicar e monitorar camadas</li>
+          </ul>
+        </article>
+      </section>
+
+      <span class="tag">runtime python 3</span>
+      <a class="cta" href="/">Atualizar painel</a>
+    </main>
+  </body>
+</html>

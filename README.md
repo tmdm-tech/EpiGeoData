@@ -1,6 +1,6 @@
 # EpigeoData
 
-Aplicativo Flutter com uma interface voltada para organização de dados geográficos em múltiplas camadas para execução em plataforma online de mapeamento.
+Aplicativo com interface web em Python 3 (Flask) voltado para organizacao de dados geograficos em multiplas camadas para execucao em plataforma online de mapeamento.
 
 ## Estrutura da interface
 
@@ -12,18 +12,21 @@ Aplicativo Flutter com uma interface voltada para organização de dados geográ
 ## Executar o projeto
 
 ```bash
-flutter pub get
-flutter run
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python app.py
 ```
 
 ## Testes
 
 ```bash
-flutter test
+python3 -m py_compile app.py
 ```
 
 ## Implantacao
 
-- O deploy oficial deste projeto e feito com Docker via Render (configurado em `render.yaml`).
-- O arquivo `requirements.txt` existe apenas para compatibilidade com detectores de build e nao define o runtime principal do app.
+- O deploy oficial deste projeto e feito no Render com runtime Python 3 (configurado em `render.yaml`).
+- O build instala dependencias com `pip install -r requirements.txt`.
+- O start e feito com `gunicorn app:app`.
 - A cada push na branch `main`, o Render executa o auto deploy.

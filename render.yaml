@@ -4,16 +4,14 @@
 services:
   - type: web
     name: epigeodata
-    env: docker
-    dockerfilePath: ./Dockerfile
-    dockerCommand: nginx -g 'daemon off;'
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
     plan: free              # altere para "starter" ou "standard" quando precisar de mais recursos
     healthCheckPath: /
     autoDeploy: true        # deploy automático a cada push na branch principal
 
     # Variáveis de ambiente (adicione aqui quando precisar de backend/API)
     envVars:
-      - key: PORT
-        value: "10000"
       - key: FLUTTER_ENV
         value: production

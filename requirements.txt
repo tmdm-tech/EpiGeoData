@@ -1,2 +1,2 @@
-# Arquivo de compatibilidade para plataformas que detectam requirements.txt
-# Deploy oficial deste projeto: Docker + Flutter Web (render.yaml)
+Flask==3.0.3
+gunicorn==22.0.0
