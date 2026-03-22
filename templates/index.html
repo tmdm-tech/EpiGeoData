@@ -4,6 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>EpiGeoData</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
     <style>
       :root {
         --bg-1: #2b0f59;
@@ -274,6 +280,61 @@
         min-height: 78px;
       }
 
+      .map-card {
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.05);
+        padding: 14px;
+      }
+
+      .map-card h2 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .map-card p {
+        margin: 6px 0 0;
+        color: #dfcbff;
+        font-size: 13px;
+      }
+
+      .filters {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .filters label {
+        display: grid;
+        gap: 6px;
+        font-size: 12px;
+        color: #d9c0ff;
+      }
+
+      .filters select {
+        width: 100%;
+        border: 1px solid rgba(217, 188, 255, 0.35);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.1);
+        color: #f6eeff;
+        padding: 9px 10px;
+        font-size: 13px;
+      }
+
+      .filters option {
+        color: #1d1230;
+      }
+
+      #map {
+        margin-top: 12px;
+        width: 100%;
+        height: 330px;
+        border-radius: 14px;
+        border: 1px solid rgba(214, 183, 255, 0.36);
+        overflow: hidden;
+      }
+
       .speech strong {
         display: block;
         color: var(--accent);
@@ -311,6 +372,14 @@
 
         .chip-grid {
           grid-template-columns: 1fr;
+        }
+
+        .filters {
+          grid-template-columns: 1fr;
+        }
+
+        #map {
+          height: 280px;
         }
       }
     </style>
@@ -404,6 +473,28 @@
               </button>
             </div>
           </article>
+
+          <article class="map-card">
+            <h2>Mini mapa base: Pernambuco por GERES e municipio</h2>
+            <p>Selecione a GERES e o municipio para filtrar em tempo real.</p>
+
+            <div class="filters">
+              <label>
+                GERES de Saude
+                <select id="geresSelect">
+                  <option value="ALL">Todas as GERES</option>
+                </select>
+              </label>
+              <label>
+                Municipio
+                <select id="municipioSelect">
+                  <option value="">Todos os municipios</option>
+                </select>
+              </label>
+            </div>
+
+            <div id="map" aria-label="Mapa de Pernambuco por GERES e municipio"></div>
+          </article>
         </div>
 
         <aside class="assistant">
@@ -424,9 +515,52 @@
       </section>
     </main>
 
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
     <script>
       const statusBox = document.getElementById("statusBox");
       const speechBox = document.getElementById("speechBox");
+      const geresSelect = document.getElementById("geresSelect");
+      const municipioSelect = document.getElementById("municipioSelect");
+
+      const geresMunicipios = {
+        "I GERES": ["Recife", "Olinda", "Jaboatao dos Guararapes", "Paulista", "Camaragibe", "Abreu e Lima", "Sao Lourenco da Mata"],
+        "II GERES": ["Limoeiro", "Surubim", "Bom Jardim", "Passira", "Joao Alfredo", "Feira Nova"],
+        "III GERES": ["Palmares", "Catende", "Agua Preta", "Joaquim Nabuco", "Gameleira", "Ribeirao"],
+        "IV GERES": ["Caruaru", "Santa Cruz do Capibaribe", "Toritama", "Brejo da Madre de Deus", "Bezerros", "Riacho das Almas"],
+        "V GERES": ["Garanhuns", "Lajedo", "Canhotinho", "Bom Conselho", "Sao Joao", "Saloa"],
+        "VI GERES": ["Arcoverde", "Buique", "Sertania", "Ibimirim", "Pedra", "Tupanatinga"],
+        "VII GERES": ["Salgueiro", "Cabrobo", "Parnamirim", "Cedro", "Serrita", "Terra Nova"],
+        "VIII GERES": ["Petrolina", "Lagoa Grande", "Santa Maria da Boa Vista", "Afranio", "Dormentes", "Oroco"],
+        "IX GERES": ["Ouricuri", "Bodoco", "Trindade", "Exu", "Granito", "Santa Cruz"],
+        "X GERES": ["Afogados da Ingazeira", "Tabira", "Carnaiba", "Iguaracy", "Itapetim", "Sao Jose do Egito"],
+        "XI GERES": ["Serra Talhada", "Triunfo", "Santa Cruz da Baixa Verde", "Flores", "Calumbi", "Betania"],
+        "XII GERES": ["Goiana", "Igarassu", "Itapissuma", "Ilha de Itamaraca", "Condado", "Timbauba"]
+      };
+
+      const geresColors = {
+        "I GERES": "#ffb3ff",
+        "II GERES": "#c4b5ff",
+        "III GERES": "#9ad7ff",
+        "IV GERES": "#8dffcf",
+        "V GERES": "#ffe49c",
+        "VI GERES": "#ffb1c3",
+        "VII GERES": "#d8ffb2",
+        "VIII GERES": "#a5f0ff",
+        "IX GERES": "#e0c0ff",
+        "X GERES": "#ffd6a8",
+        "XI GERES": "#d2ffea",
+        "XII GERES": "#b9d0ff"
+      };
+
+      let map;
+      let estadoLayer;
+      let municipioLayer;
+      let geresLayerGroup;
+      let municipioCatalog = [];
 
       function activateButton(groupId, button) {
         const group = document.getElementById(groupId);
@@ -476,6 +610,208 @@
           activateButton("climateButtons", button);
           updateAssistant(button);
         });
+      });
+
+      function normalizeName(name) {
+        return name
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .toLowerCase();
+      }
+
+      function municipioByName(name) {
+        const n = normalizeName(name);
+        return municipioCatalog.find((item) => normalizeName(item.nome) === n);
+      }
+
+      function clearMunicipioLayer() {
+        if (municipioLayer) {
+          map.removeLayer(municipioLayer);
+          municipioLayer = null;
+        }
+      }
+
+      function clearGeresLayer() {
+        if (geresLayerGroup) {
+          map.removeLayer(geresLayerGroup);
+          geresLayerGroup = null;
+        }
+      }
+
+      async function drawMunicipioById(id, label) {
+        clearMunicipioLayer();
+        if (!id) {
+          return;
+        }
+
+        const response = await fetch(
+          "https://servicodados.ibge.gov.br/api/v3/malhas/municipios/" +
+            id +
+            "?formato=application/vnd.geo+json&qualidade=minima"
+        );
+        const geojson = await response.json();
+
+        municipioLayer = L.geoJSON(geojson, {
+          style: {
+            color: "#ffe9ff",
+            weight: 2.5,
+            fillColor: "#cc8fff",
+            fillOpacity: 0.25
+          }
+        }).addTo(map);
+
+        municipioLayer.bindPopup("Municipio selecionado: " + label).openPopup();
+        map.fitBounds(municipioLayer.getBounds(), { padding: [22, 22] });
+      }
+
+      async function drawGeres(geresName) {
+        clearGeresLayer();
+        clearMunicipioLayer();
+
+        if (!geresName || geresName === "ALL") {
+          if (estadoLayer) {
+            map.fitBounds(estadoLayer.getBounds(), { padding: [18, 18] });
+          }
+          return;
+        }
+
+        const municipios = geresMunicipios[geresName] || [];
+        const color = geresColors[geresName] || "#d7a9ff";
+        const layers = [];
+
+        for (const nome of municipios) {
+          const item = municipioByName(nome);
+          if (!item) {
+            continue;
+          }
+
+          const response = await fetch(
+            "https://servicodados.ibge.gov.br/api/v3/malhas/municipios/" +
+              item.id +
+              "?formato=application/vnd.geo+json&qualidade=minima"
+          );
+          const geojson = await response.json();
+          const layer = L.geoJSON(geojson, {
+            style: {
+              color: "#ffffff",
+              weight: 1.3,
+              fillColor: color,
+              fillOpacity: 0.24
+            }
+          });
+          layer.bindPopup(geresName + " - " + item.nome);
+          layers.push(layer);
+        }
+
+        geresLayerGroup = L.layerGroup(layers).addTo(map);
+        const bounds = [];
+        layers.forEach((layer) => bounds.push(layer.getBounds()));
+        if (bounds.length > 0) {
+          const merged = bounds[0];
+          for (let i = 1; i < bounds.length; i += 1) {
+            merged.extend(bounds[i]);
+          }
+          map.fitBounds(merged, { padding: [22, 22] });
+        }
+      }
+
+      function fillGeresSelect() {
+        Object.keys(geresMunicipios).forEach((geresName) => {
+          const option = document.createElement("option");
+          option.value = geresName;
+          option.textContent = geresName;
+          geresSelect.appendChild(option);
+        });
+      }
+
+      function fillMunicipioSelect(list) {
+        municipioSelect.innerHTML = "<option value=''>Todos os municipios</option>";
+        list.forEach((municipio) => {
+          const option = document.createElement("option");
+          option.value = municipio.id;
+          option.textContent = municipio.nome;
+          municipioSelect.appendChild(option);
+        });
+      }
+
+      function municipiosByGeres(geresName) {
+        if (!geresName || geresName === "ALL") {
+          return municipioCatalog;
+        }
+
+        const nomes = geresMunicipios[geresName] || [];
+        const normalizedSet = new Set(nomes.map((name) => normalizeName(name)));
+        return municipioCatalog.filter((m) => normalizedSet.has(normalizeName(m.nome)));
+      }
+
+      async function loadPernambucoBase() {
+        map = L.map("map", { zoomControl: true }).setView([-8.4, -37.9], 7);
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: "&copy; OpenStreetMap contributors"
+        }).addTo(map);
+
+        const estadoResponse = await fetch(
+          "https://servicodados.ibge.gov.br/api/v3/malhas/estados/26?formato=application/vnd.geo+json&qualidade=minima"
+        );
+        const estadoGeo = await estadoResponse.json();
+        estadoLayer = L.geoJSON(estadoGeo, {
+          style: {
+            color: "#f4deff",
+            weight: 2,
+            fillColor: "#8d4bcc",
+            fillOpacity: 0.11
+          }
+        }).addTo(map);
+        map.fitBounds(estadoLayer.getBounds(), { padding: [18, 18] });
+
+        const municipiosResponse = await fetch(
+          "https://servicodados.ibge.gov.br/api/v1/localidades/estados/26/municipios"
+        );
+        municipioCatalog = await municipiosResponse.json();
+        municipioCatalog.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+        fillMunicipioSelect(municipioCatalog);
+      }
+
+      geresSelect.addEventListener("change", async () => {
+        const geres = geresSelect.value;
+        const filtered = municipiosByGeres(geres);
+        fillMunicipioSelect(filtered);
+        await drawGeres(geres);
+
+        if (geres !== "ALL") {
+          statusBox.innerHTML = "<small>GERES ativa</small><strong>" + geres + "</strong>";
+          speechBox.innerHTML =
+            "<strong>Assistente EpiGeo</strong>" +
+            "GERES selecionada: <b>" +
+            geres +
+            "</b>. Agora escolha um municipio para detalhar o agravo em tempo real.";
+        }
+      });
+
+      municipioSelect.addEventListener("change", async () => {
+        const municipioId = municipioSelect.value;
+        const municipioLabel = municipioSelect.options[municipioSelect.selectedIndex]?.text || "";
+        await drawMunicipioById(municipioId, municipioLabel);
+
+        if (municipioId) {
+          statusBox.innerHTML = "<small>Municipio ativo</small><strong>" + municipioLabel + "</strong>";
+          speechBox.innerHTML =
+            "<strong>Assistente EpiGeo</strong>" +
+            "Municipio selecionado: <b>" +
+            municipioLabel +
+            "</b>. Camadas de doenca e clima podem ser cruzadas neste territorio.";
+        }
+      });
+
+      fillGeresSelect();
+      loadPernambucoBase().catch(() => {
+        speechBox.innerHTML =
+          "<strong>Assistente EpiGeo</strong>" +
+          "Nao foi possivel carregar o mapa externo agora. Verifique a conexao para visualizar Pernambuco por GERES e municipio.";
       });
     </script>
   </body>
