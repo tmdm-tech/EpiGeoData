@@ -16,6 +16,8 @@ RUN flutter build web --release
 # ── Stage 2: Serve ───────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine
 
+ENV PORT=10000
+
 # Copiar os arquivos do build para o Nginx
 COPY --from=build /app/build/web /usr/share/nginx/html
 
@@ -23,3 +25,5 @@ COPY --from=build /app/build/web /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 EXPOSE 10000
+
+CMD ["nginx", "-g", "daemon off;"]
