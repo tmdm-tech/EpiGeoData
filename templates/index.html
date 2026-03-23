@@ -142,11 +142,47 @@
         background: var(--chip);
         color: var(--ink);
         text-align: left;
-        font-size: 13px;
-        line-height: 1.35;
-        padding: 10px 12px;
+        font-size: 12px;
+        line-height: 1.3;
+        padding: 10px 10px;
         cursor: pointer;
         transition: 140ms ease;
+        display: grid;
+        grid-template-columns: 36px 1fr;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .chip .icon {
+        font-size: 28px;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 36px;
+      }
+
+      .chip-content {
+        display: grid;
+        gap: 2px;
+      }
+
+      .chip strong {
+        display: block;
+        font-weight: 700;
+        font-size: 11px;
+      }
+
+      .chip span {
+        color: #f0ddff;
+        font-size: 10px;
+      }
+
+      .chip:hover,
+      .chip.active {
+        background: var(--chip-hover);
+        border-color: #fff;
+        transform: translateY(-1px) scale(1.02);
       }
 
       .chip strong {
@@ -176,6 +212,26 @@
         position: relative;
         cursor: pointer;
         filter: drop-shadow(0 6px 22px rgba(25, 9, 42, 0.4));
+        animation: robotIdle 3s ease-in-out infinite;
+      }
+
+      @keyframes robotIdle {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-6px); }
+      }
+
+      @keyframes robotBounce {
+        0%, 100% { transform: scale(1) translateY(0px); }
+        50% { transform: scale(1.05) translateY(-8px); }
+      }
+
+      @keyframes robotSpin {
+        0% { transform: rotateZ(0deg); }
+        100% { transform: rotateZ(360deg); }
+      }
+
+      .robot.bounce { animation: robotBounce 0.6s ease-in-out !important; }
+      .robot.spin { animation: robotSpin 0.8s ease-in-out !important; }
       }
 
       .hair {
@@ -207,6 +263,10 @@
         height: 12px;
         border-radius: 99px;
         background: #2d1b4a;
+                display: grid;
+                place-items: center;
+                transition: all 0.2s ease;
+              }
         display: grid;
         place-items: center;
       }
@@ -225,6 +285,16 @@
 
       .eye.right {
         right: 22px;
+            }
+
+            .eye.blink {
+              animation: blink 0.3s ease-in-out;
+            }
+
+            @keyframes blink {
+              0%, 100% { height: 12px; }
+              50% { height: 2px; }
+            }
       }
 
       .mouth {
@@ -235,6 +305,18 @@
         height: 10px;
         border-radius: 0 0 16px 16px;
         border-bottom: 3px solid #a156d5;
+              border-bottom: 3px solid #a156d5;
+              transition: all 0.3s ease;
+            }
+
+            .mouth.smile {
+              animation: smileAnim 0.4s ease-in-out;
+            }
+
+            @keyframes smileAnim {
+              0%, 100% { border-bottom-width: 3px; }
+              50% { border-bottom-width: 5px; transform: scaleX(1.1); }
+            }
       }
 
       .earring {
@@ -244,6 +326,9 @@
         border-radius: 50%;
         background: #c8f4ff;
         box-shadow: 0 0 10px rgba(186, 241, 255, 0.8);
+              box-shadow: 0 0 10px rgba(186, 241, 255, 0.8);
+              transition: all 0.2s ease;
+            }
       }
 
       .earring.left {
@@ -253,6 +338,18 @@
 
       .earring.right {
         right: -6px;
+                top: 74px;
+              }
+
+              .earring.wiggle {
+                animation: wiggle 0.5s ease-in-out;
+              }
+
+              @keyframes wiggle {
+                0%, 100% { transform: rotate(0deg); }
+                25% { transform: rotate(-10deg); }
+                75% { transform: rotate(10deg); }
+              }
         top: 74px;
       }
 
@@ -286,6 +383,14 @@
         border-radius: 50%;
         background: linear-gradient(130deg, var(--accent-2), #8dc2ff);
         box-shadow: 0 0 14px rgba(130, 222, 255, 0.6);
+              box-shadow: 0 0 14px rgba(130, 222, 255, 0.6);
+              animation: badgePulse 2s ease-in-out infinite;
+            }
+
+            @keyframes badgePulse {
+              0%, 100% { transform: scale(1); filter: brightness(1); }
+              50% { transform: scale(1.08); filter: brightness(1.2); }
+            }
       }
 
       .speech {
@@ -369,6 +474,12 @@
         border-radius: 14px;
         border: 1px solid rgba(225, 198, 255, 0.44);
         overflow: hidden;
+        filter: brightness(0.8) contrast(1.1);
+      }
+
+      .leaflet-container {
+        background: #1a0f2e !important;
+      }
       }
 
       .panel-actions {
@@ -516,14 +627,62 @@
             <h2>Doenças e agravos</h2>
             <p>Selecione uma doença (agente etiológico ao lado).</p>
             <div class="chip-grid" id="diseaseButtons">
-              <button class="chip active" data-type="doenca" data-name="Sindrome Congenita da Zika" data-agent="Virus Zika" data-note="Agravos neurologicos e malformacoes congenitas em recem-nascidos."><strong>Sindrome Congenita da Zika</strong><span>Agente etiologico: Virus Zika</span></button>
-              <button class="chip" data-type="doenca" data-name="Covid 19" data-agent="SARS-CoV-2" data-note="Agravos respiratorios agudos e complicacoes sistemicas."><strong>Covid 19</strong><span>Agente etiologico: SARS-CoV-2</span></button>
-              <button class="chip" data-type="doenca" data-name="Dengue" data-agent="Virus da Dengue (DENV 1-4)" data-note="Agravos febris com risco de formas graves."><strong>Dengue</strong><span>Agente etiologico: Virus da Dengue (DENV 1-4)</span></button>
-              <button class="chip" data-type="doenca" data-name="Esquistossomose" data-agent="Schistosoma mansoni" data-note="Agravos hepatointestinais associados a exposicao hidrica."><strong>Esquistossomose</strong><span>Agente etiologico: Schistosoma mansoni</span></button>
-              <button class="chip" data-type="doenca" data-name="Tuberculose" data-agent="Mycobacterium tuberculosis" data-note="Agravos pulmonares persistentes e transmissao comunitaria."><strong>Tuberculose</strong><span>Agente etiologico: Mycobacterium tuberculosis</span></button>
-              <button class="chip" data-type="doenca" data-name="Monkeypox" data-agent="Virus mpox" data-note="Agravos dermatologicos e sindromes febris."><strong>Monkeypox</strong><span>Agente etiologico: Virus mpox</span></button>
-              <button class="chip" data-type="doenca" data-name="Chikungunya" data-agent="Virus Chikungunya" data-note="Agravos febris com artralgia intensa."><strong>Chikungunya</strong><span>Agente etiologico: Virus Chikungunya</span></button>
-              <button class="chip" data-type="doenca" data-name="Febre Oropouche" data-agent="Virus Oropouche" data-note="Agravos febris com surtos em areas urbano-rurais."><strong>Febre Oropouche</strong><span>Agente etiologico: Virus Oropouche</span></button>
+              <button class="chip active" data-type="doenca" data-name="Sindrome Congenita da Zika" data-agent="Virus Zika" data-note="Agravos neurologicos e malformacoes congenitas em recem-nascidos.">
+                <div class="icon">🧠</div>
+                <div class="chip-content">
+                  <strong>Zika</strong>
+                  <span>Virus Zika</span>
+                </div>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Covid 19" data-agent="SARS-CoV-2" data-note="Agravos respiratorios agudos e complicacoes sistemicas.">
+                <div class="icon">🫁</div>
+                <div class="chip-content">
+                  <strong>Covid 19</strong>
+                  <span>SARS-CoV-2</span>
+                </div>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Dengue" data-agent="Virus da Dengue (DENV 1-4)" data-note="Agravos febris com risco de formas graves.">
+                <div class="icon">🦟</div>
+                <div class="chip-content">
+                  <strong>Dengue</strong>
+                  <span>DENV 1-4</span>
+                </div>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Esquistossomose" data-agent="Schistosoma mansoni" data-note="Agravos hepatointestinais associados a exposicao hidrica.">
+                <div class="icon">🌊</div>
+                <div class="chip-content">
+                  <strong>Esquistossomose</strong>
+                  <span>S. mansoni</span>
+                </div>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Tuberculose" data-agent="Mycobacterium tuberculosis" data-note="Agravos pulmonares persistentes e transmissao comunitaria.">
+                <div class="icon">🫂</div>
+                <div class="chip-content">
+                  <strong>Tuberculose</strong>
+                  <span>M. tuberculosis</span>
+                </div>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Monkeypox" data-agent="Virus mpox" data-note="Agravos dermatologicos e sindromes febris.">
+                <div class="icon">🐵</div>
+                <div class="chip-content">
+                  <strong>Monkeypox</strong>
+                  <span>Virus mpox</span>
+                </div>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Chikungunya" data-agent="Virus Chikungunya" data-note="Agravos febris com artralgia intensa.">
+                <div class="icon">🦠</div>
+                <div class="chip-content">
+                  <strong>Chikungunya</strong>
+                  <span>Virus Chikungunya</span>
+                </div>
+              </button>
+              <button class="chip" data-type="doenca" data-name="Febre Oropouche" data-agent="Virus Oropouche" data-note="Agravos febris com surtos em areas urbano-rurais.">
+                <div class="icon">🌡️</div>
+                <div class="chip-content">
+                  <strong>Oropouche</strong>
+                  <span>Virus Oropouche</span>
+                </div>
+              </button>
             </div>
           </article>
 
@@ -531,10 +690,34 @@
             <h2>Variáveis climáticas</h2>
             <p>Seleção múltipla habilitada.</p>
             <div class="chip-grid" id="climateButtons">
-              <button class="chip" data-type="clima" data-name="Precipitacao" data-note="Acumulado de chuva para correlacao com vetores."><strong>Precipitacao</strong><span>Camada climatica</span></button>
-              <button class="chip" data-type="clima" data-name="Temperatura" data-note="Leitura de sazonalidade dos agravos."><strong>Temperatura</strong><span>Camada climatica</span></button>
-              <button class="chip" data-type="clima" data-name="Queimadas" data-note="Focos de calor e impactos ambientais."><strong>Queimadas</strong><span>Camada climatica</span></button>
-              <button class="chip" data-type="clima" data-name="Cobertura vegetal" data-note="Contexto ecologico dos territorios."><strong>Cobertura vegetal</strong><span>Camada climatica</span></button>
+              <button class="chip" data-type="clima" data-name="Precipitacao" data-note="Acumulado de chuva para correlacao com vetores.">
+                <div class="icon">🌧️</div>
+                <div class="chip-content">
+                  <strong>Precipitacao</strong>
+                  <span>Camada climatica</span>
+                </div>
+              </button>
+              <button class="chip" data-type="clima" data-name="Temperatura" data-note="Leitura de sazonalidade dos agravos.">
+                <div class="icon">🌡️</div>
+                <div class="chip-content">
+                  <strong>Temperatura</strong>
+                  <span>Camada climatica</span>
+                </div>
+              </button>
+              <button class="chip" data-type="clima" data-name="Queimadas" data-note="Focos de calor e impactos ambientais.">
+                <div class="icon">🔥</div>
+                <div class="chip-content">
+                  <strong>Queimadas</strong>
+                  <span>Camada climatica</span>
+                </div>
+              </button>
+              <button class="chip" data-type="clima" data-name="Cobertura vegetal" data-note="Contexto ecologico dos territorios.">
+                <div class="icon">🌿</div>
+                <div class="chip-content">
+                  <strong>Cobertura vegetal</strong>
+                  <span>Camada climatica</span>
+                </div>
+              </button>
             </div>
           </article>
 
@@ -549,8 +732,8 @@
             <div id="map" aria-label="Mapa de Pernambuco por GERES e municipio"></div>
             <div class="panel-actions">
               <button class="primary" id="generateOverlayBtn">Gerar mapa sobreposto</button>
-              <button class="secondary" id="exportPdfBtn">Gerar relatorio PDF</button>
-              <button class="danger" id="exportSheetBtn">Baixar planilha</button>
+              <button class="secondary" id="exportPdfBtn">Solicitar Relatório PDF</button>
+              <button class="danger" id="exportSheetBtn">Solicitar Relatório de Imagens</button>
             </div>
           </article>
         </div>
@@ -605,18 +788,18 @@
       const techRobot = document.getElementById("techRobot");
 
       const geresMunicipios = {
-        "I GERES": ["Recife", "Olinda", "Jaboatao dos Guararapes", "Paulista", "Camaragibe", "Abreu e Lima", "Sao Lourenco da Mata"],
-        "II GERES": ["Limoeiro", "Surubim", "Bom Jardim", "Passira", "Joao Alfredo", "Feira Nova"],
-        "III GERES": ["Palmares", "Catende", "Agua Preta", "Joaquim Nabuco", "Gameleira", "Ribeirao"],
-        "IV GERES": ["Caruaru", "Santa Cruz do Capibaribe", "Toritama", "Brejo da Madre de Deus", "Bezerros", "Riacho das Almas"],
-        "V GERES": ["Garanhuns", "Lajedo", "Canhotinho", "Bom Conselho", "Sao Joao", "Saloa"],
-        "VI GERES": ["Arcoverde", "Buique", "Sertania", "Ibimirim", "Pedra", "Tupanatinga"],
-        "VII GERES": ["Salgueiro", "Cabrobo", "Parnamirim", "Cedro", "Serrita", "Terra Nova"],
-        "VIII GERES": ["Petrolina", "Lagoa Grande", "Santa Maria da Boa Vista", "Afranio", "Dormentes", "Oroco"],
-        "IX GERES": ["Ouricuri", "Bodoco", "Trindade", "Exu", "Granito", "Santa Cruz"],
-        "X GERES": ["Afogados da Ingazeira", "Tabira", "Carnaiba", "Iguaracy", "Itapetim", "Sao Jose do Egito"],
-        "XI GERES": ["Serra Talhada", "Triunfo", "Santa Cruz da Baixa Verde", "Flores", "Calumbi", "Betania"],
-        "XII GERES": ["Goiana", "Igarassu", "Itapissuma", "Ilha de Itamaraca", "Condado", "Timbauba"]
+        "I GERES": ["Recife", "Moreno", "Jaboatão dos Guararapes", "Paulista", "Camaragibe", "Cabo de Santo Agostinho", "Olinda", "Igarassu", "Abreu e Lima", "Fernando de Noronha", "Glória do Goitá", "Ilha de Itamaracá"],
+        "II GERES": ["Bom Jardim", "Buenos Aires", "Carpina", "Casinhas", "Cumaru", "Feira Nova", "João Alfredo", "Lagoa de Itaenga", "Lagoa do Carro", "Limoeiro", "Machados", "Nazaré da Mata", "Passira", "Paudalho", "Salgadinho", "Santa Cruz do Capibaribe", "São Vicente Ferrer", "Surubim", "Timbaúba", "Tracunhaém"],
+        "III GERES": ["Água Preta", "Amaraji", "Barreiros", "Belém de Maria", "Catende", "Cortês", "Escada", "Gameleira", "Jaqueira", "Joaquim Nabuco", "Lagoa dos Gatos", "Maraial", "Palmares", "Primavera", "Quipapá", "Ribeirão", "Rio Formoso", "São Benedito do Sul", "São José da Coroa Grande", "Sirinhaém", "Tamandaré", "Xexéu"],
+        "IV GERES": ["Caruaru", "Altinho", "Barra de Guabiraba", "Bezerros", "Bonito", "Brejo da Madre de Deus", "Cachoeirinha", "Camocim de São Félix", "Cupira", "Frei Miguelindo", "Gravatá", "Ibirajuba", "Jataúba", "Jurema", "Panelas", "Pesqueira", "Poção", "Riacho das Almas", "Sairé", "Sanharó", "Santa Cruz do Capibaribe", "Santa Maria do Cambucá", "São Bento do Uma", "São Caetano", "São Joaquim do Monte", "Tacaimbó", "Taquaritinga do Norte", "Toritama", "Vertentes"],
+        "V GERES": ["Águas Belas", "Angelim", "Bom Conselho", "Brejão", "Caetés", "Calçado", "Canhotinho", "Capoeiras", "Correntes", "Garanhuns", "Iati", "Itaíba", "Jucati", "Jupi", "Lagoa do Ouro", "Lajedo", "Palmerina", "Paranatama", "Saloá", "São João", "Terezinha"],
+        "VI GERES": ["Arcoverde", "Buíque", "Custódia", "Ibimirim", "Inajá", "Jatobá", "Manari", "Pedra", "Petrolândia", "Sertânia", "Tacaratu", "Tupanatinga", "Venturosa"],
+        "VII GERES": ["Belém de São Francisco", "Cedro", "Mirandiba", "Salgueiro", "Serrita", "Terra Nova", "Verdejante"],
+        "VIII GERES": ["Afrânio", "Cabrobó", "Dormentes", "Lagoa Grande", "Orocó", "Petrolina", "Santa Maria da Boa Vista"],
+        "IX GERES": ["Araripina", "Bodocó", "Exu", "Granito", "Ipubi", "Moreilândia", "Ouricuri", "Parnamirim", "Santa Cruz", "Santa Filomena", "Trindade"],
+        "X GERES": ["Afogados da Ingazeira", "Brejinho", "Carnaíba", "Iguaraci", "Ingazeira", "Itapetim", "Quixaba", "Santa Terezinha", "São José do Egito", "Solidão", "Tabira", "Tuparetama"],
+        "XI GERES": ["Betânia", "Calumbi", "Carnaubeira da Penha", "Flores", "Floresta", "Itacuruba", "Santa Cruz da Baixa Verde", "São José do Belmonte", "Serra Talhada", "Triunfo"],
+        "XII GERES": ["Aliança", "Camutanga", "Condado", "Ferreiros", "Goiana", "Itambé", "Itaquitinga", "Macaparana", "São Vicente Férrer", "Timbaúba"]
       };
 
       const geresColors = {
@@ -698,6 +881,37 @@
 
       function updateRobotMessage(msg) {
         speechBox.innerHTML = "<strong>Assistente EpiGeo</strong>" + msg;
+
+            function animateRobot(animationType) {
+              techRobot.classList.remove("bounce", "spin");
+              void techRobot.offsetWidth;
+              techRobot.classList.add(animationType);
+              setTimeout(() => {
+                techRobot.classList.remove(animationType);
+              }, 600);
+            }
+
+            function robotBlink() {
+              const eyes = document.querySelectorAll(".eye");
+              eyes.forEach(eye => {
+                eye.classList.add("blink");
+                setTimeout(() => eye.classList.remove("blink"), 300);
+              });
+            }
+
+            function robotSmile() {
+              const mouth = document.querySelector(".mouth");
+              mouth.classList.add("smile");
+              setTimeout(() => mouth.classList.remove("smile"), 400);
+            }
+
+            function robotWiggleEarring() {
+              const earrings = document.querySelectorAll(".earring");
+              earrings.forEach(earring => {
+                earring.classList.add("wiggle");
+                setTimeout(() => earring.classList.remove("wiggle"), 500);
+              });
+            }
       }
 
       function updateSelectionStatus() {
@@ -716,6 +930,11 @@
       function activateDiseaseButton(button) {
         document.querySelectorAll("#diseaseButtons .chip").forEach((el) => el.classList.remove("active"));
         button.classList.add("active");
+              document.querySelectorAll("#diseaseButtons .chip").forEach((el) => el.classList.remove("active"));
+              button.classList.add("active");
+              animateRobot("bounce");
+              robotBlink();
+            }
       }
 
       function toggleClimateButton(button) {
@@ -725,6 +944,12 @@
           button.classList.remove("active");
         } else {
           selectedClimates.add(climate);
+                    selectedClimates.add(climate);
+                    button.classList.add("active");
+                    animateRobot("spin");
+                    robotWiggleEarring();
+                  }
+                }
           button.classList.add("active");
         }
       }
@@ -868,6 +1093,29 @@
       async function generateOverlay() {
         if (selectedClimates.size === 0) {
           updateRobotMessage("Selecione ao menos uma variavel climatica antes de gerar o mapa sobreposto.");
+                    updateRobotMessage("Selecione ao menos uma variavel climatica antes de gerar o mapa sobreposto.");
+                    robotBlink();
+                    return;
+                  }
+
+                  clearOverlayLayer();
+                  const style = buildOverlayStyle();
+
+                  if (municipioLayer) {
+                    overlayLayer = L.geoJSON(municipioLayer.toGeoJSON(), { style }).addTo(map);
+                    map.fitBounds(overlayLayer.getBounds(), { padding: [22, 22] });
+                  } else if (geresLayerGroup) {
+                    const geos = [];
+                    geresLayerGroup.eachLayer((layer) => geos.push(layer.toGeoJSON()));
+                    overlayLayer = L.geoJSON(geos, { style }).addTo(map);
+                    map.fitBounds(overlayLayer.getBounds(), { padding: [22, 22] });
+                  } else if (estadoGeoCache) {
+                    overlayLayer = L.geoJSON(estadoGeoCache, { style }).addTo(map);
+                    map.fitBounds(overlayLayer.getBounds(), { padding: [18, 18] });
+                  }
+
+                  animateRobot("bounce");
+                  robotSmile();
           return;
         }
 
@@ -903,6 +1151,9 @@
         authModal.classList.add("open");
         authModal.setAttribute("aria-hidden", "false");
         passwordInput.focus();
+              passwordInput.focus();
+              robotWiggleEarring();
+            }
       }
 
       function closeAuthModal() {
@@ -925,6 +1176,10 @@
 
         if (!authResponse.ok) {
           passwordError.textContent = "Senha invalida.";
+                    passwordError.textContent = "Senha invalida.";
+                    robotBlink();
+                    return;
+                  }
           return;
         }
 
@@ -951,6 +1206,14 @@
         URL.revokeObjectURL(url);
         closeAuthModal();
         updateRobotMessage("Arquivo protegido gerado com sucesso.");
+        a.download = pendingExportType === "pdf" ? "relatorio_epigeodata.pdf" : "epigeodata_images.csv";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        closeAuthModal();
+        robotSmile();
+        updateRobotMessage("Arquivo protegido gerado com sucesso. Verifique seu download.");
       }
 
       async function loadPernambucoBase() {
@@ -1020,6 +1283,10 @@
         applyMunicipioFilters();
         await drawGeres(activeGeres);
         updateRobotMessage("GERES selecionada: <b>" + (activeGeres === "ALL" ? "Todas as GERES" : activeGeres) + "</b>.");
+              await drawGeres(activeGeres);
+              robotWiggleEarring();
+              updateRobotMessage("GERES selecionada: <b>" + (activeGeres === "ALL" ? "Todas as GERES" : activeGeres) + "</b>.");
+            });
       });
 
       municipioSearch.addEventListener("input", () => {
@@ -1032,6 +1299,10 @@
         await drawMunicipioById(municipioId, municipioLabel);
         if (municipioId) {
           updateRobotMessage("Municipio selecionado: <b>" + municipioLabel + "</b>.");
+                  updateRobotMessage("Municipio selecionado: <b>" + municipioLabel + "</b>.");
+                  robotSmile();
+                }
+              });
         }
       });
 
@@ -1050,6 +1321,19 @@
       techRobot.addEventListener("click", () => {
         hintIndex = (hintIndex + 1) % robotHints.length;
         updateRobotMessage(robotHints[hintIndex]);
+              "Toque em gerar mapa sobreposto para visualizar o cruzamento entre agravo e clima.",
+              "Eu tambem posso liberar PDF e imagens com senha de acesso.",
+              "Selecione GERES e municipio para detalhar a analise territorial.",
+              "Múltiplas variáveis climáticas podem ser selecionadas simultaneamente!",
+              "Use os ícones coloridos para identificar rapidamente cada agravo de saude."
+            ];
+            let hintIndex = 0;
+            techRobot.addEventListener("click", () => {
+              hintIndex = (hintIndex + 1) % robotHints.length;
+              robotBlink();
+              robotSmile();
+              updateRobotMessage(robotHints[hintIndex]);
+            });
       });
 
       const pupils = Array.from(document.querySelectorAll(".pupil"));
