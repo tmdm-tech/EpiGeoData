@@ -17,13 +17,15 @@ def _check_password(password: str) -> bool:
     return password == expected
 
 
-def _parse_payload() -> tuple[str, list[str], str, str]:
+def _parse_payload() -> tuple[str, list[str], str, str, str, str]:
     payload = request.get_json(silent=True) or {}
     disease = payload.get("disease", "Nao informado")
     climates = payload.get("climates", [])
     geres = payload.get("geres", "Todas as GERES")
     municipio = payload.get("municipio", "Todos os municipios")
-    return disease, climates, geres, municipio
+    socio_variable = payload.get("sociodemographic_variable", "Nao informado")
+    socio_scope = payload.get("sociodemographic_scope", "Nao informado")
+    return disease, climates, geres, municipio, socio_variable, socio_scope
 
 
 @app.get("/")
@@ -45,7 +47,7 @@ def export_pdf():
     if not _check_password(payload.get("password", "")):
         return jsonify({"message": "Acesso negado"}), 403
 
-    disease, climates, geres, municipio = _parse_payload()
+    disease, climates, geres, municipio, socio_variable, socio_scope = _parse_payload()
     climates_text = ", ".join(climates) if climates else "Nenhuma variavel selecionada"
 
     buffer = io.BytesIO()
@@ -59,7 +61,8 @@ def export_pdf():
     pdf.drawString(50, 720, f"Variaveis climaticas: {climates_text}")
     pdf.drawString(50, 695, f"GERES: {geres}")
     pdf.drawString(50, 670, f"Municipio: {municipio}")
-    pdf.drawString(50, 640, "Observacao: Documento protegido por autenticacao no portal.")
+    pdf.drawString(50, 645, f"Sociodemografico: {socio_variable} ({socio_scope})")
+    pdf.drawString(50, 620, "Observacao: Documento protegido por autenticacao no portal.")
     pdf.showPage()
     pdf.save()
 
@@ -78,7 +81,7 @@ def export_spreadsheet():
     if not _check_password(payload.get("password", "")):
         return jsonify({"message": "Acesso negado"}), 403
 
-    disease, climates, geres, municipio = _parse_payload()
+    disease, climates, geres, municipio, socio_variable, socio_scope = _parse_payload()
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["campo", "valor"])
@@ -87,6 +90,8 @@ def export_spreadsheet():
     writer.writerow(["geres", geres])
     writer.writerow(["municipio", municipio])
     writer.writerow(["variaveis_climaticas", " | ".join(climates) if climates else "nenhuma"])
+    writer.writerow(["variavel_sociodemografica", socio_variable])
+    writer.writerow(["escopo_sociodemografico", socio_scope])
 
     content = io.BytesIO(output.getvalue().encode("utf-8"))
     return send_file(
@@ -97,8 +102,6 @@ def export_spreadsheet():
     )
 
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
 @app.get("/api/climate-layers/<climate_type>")
 def get_climate_layers(climate_type: str) -> tuple[dict, int]:
     """Retorna dados climáticos em GeoJSON"""
@@ -138,4 +141,8 @@ def list_climate_layers() -> tuple[dict, int]:
         "camadas": available,
         "total": len(available)
     }), 200
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
 

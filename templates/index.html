@@ -583,6 +583,23 @@
         gap: 8px;
       }
 
+      .download-actions {
+        margin-top: 8px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .socio-badge {
+        margin-top: 8px;
+        padding: 8px 10px;
+        border: 1px solid rgba(228, 204, 255, 0.5);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.1);
+        font-size: 12px;
+        color: #f8edff;
+      }
+
       .primary,
       .secondary,
       .danger {
@@ -679,7 +696,8 @@
 
         .chip-grid,
         .filters,
-        .panel-actions {
+        .panel-actions,
+        .download-actions {
           grid-template-columns: 1fr;
         }
 
@@ -779,6 +797,34 @@
             </div>
           </article>
 
+          <article class="card">
+            <h2>Dados sociodemográficos (IBGE)</h2>
+            <p>Selecione a variável padrão IBGE e o nível territorial.</p>
+            <div class="filters">
+              <label>Variável sociodemográfica
+                <select id="socioVariableSelect">
+                  <option value="escolaridade">Escolaridade</option>
+                  <option value="raca_cor">Raça/cor</option>
+                  <option value="sexo">Sexo</option>
+                  <option value="idade">Idade</option>
+                  <option value="renda">Renda</option>
+                </select>
+              </label>
+              <label>Nível de agregação
+                <select id="socioScopeSelect">
+                  <option value="municipal">Municipal geral</option>
+                  <option value="geres">Nível GERES</option>
+                </select>
+              </label>
+            </div>
+            <div class="panel-actions">
+              <button class="secondary" id="applySocioBtn">Aplicar sociodemográfico no mapa</button>
+            </div>
+            <div class="socio-badge" id="socioSourceInfo">
+              Fonte ativa: IBGE padrão (quando disponível em tempo real).
+            </div>
+          </article>
+
           <article class="map-card" id="mapCard">
             <h2>Mini mapa: Pernambuco por GERES e município</h2>
             <p>Filtragem em tempo real + geração de mapa sobreposto.</p>
@@ -795,6 +841,11 @@
               <button class="primary" id="generateOverlayBtn">Gerar mapa sobreposto</button>
               <button class="secondary" id="exportPdfBtn">Solicitar Relatório PDF</button>
               <button class="danger" id="exportSheetBtn">Solicitar Relatório de Imagens</button>
+            </div>
+            <div class="download-actions">
+              <button class="secondary" id="downloadClimateMapBtn">Baixar mapa climático</button>
+              <button class="secondary" id="downloadHealthMapBtn">Baixar mapa saúde</button>
+              <button class="secondary" id="downloadSocioMapBtn">Baixar mapa sociodemográfico</button>
             </div>
           </article>
         </div>
@@ -841,6 +892,13 @@
       const generateOverlayBtn = document.getElementById("generateOverlayBtn");
       const exportPdfBtn = document.getElementById("exportPdfBtn");
       const exportSheetBtn = document.getElementById("exportSheetBtn");
+      const downloadClimateMapBtn = document.getElementById("downloadClimateMapBtn");
+      const downloadHealthMapBtn = document.getElementById("downloadHealthMapBtn");
+      const downloadSocioMapBtn = document.getElementById("downloadSocioMapBtn");
+      const socioVariableSelect = document.getElementById("socioVariableSelect");
+      const socioScopeSelect = document.getElementById("socioScopeSelect");
+      const applySocioBtn = document.getElementById("applySocioBtn");
+      const socioSourceInfo = document.getElementById("socioSourceInfo");
       const authModal = document.getElementById("authModal");
       const passwordInput = document.getElementById("passwordInput");
       const passwordError = document.getElementById("passwordError");
@@ -891,6 +949,51 @@
         "Febre Oropouche": "#8a5bd3"
       };
 
+      const climateOverlayColor = {
+        Precipitacao: "#4d87d7",
+        Temperatura: "#d67152",
+        Queimadas: "#d35d4f",
+        "Cobertura vegetal": "#5ca872"
+      };
+
+      const socioMetadata = {
+        escolaridade: {
+          label: "Escolaridade",
+          unit: "%",
+          ibgeUrls: (id) => [
+            "https://servicodados.ibge.gov.br/api/v3/agregados/6579/periodos/2010/variaveis/9324?localidades=N6[" + id + "]"
+          ]
+        },
+        raca_cor: {
+          label: "Raça/cor",
+          unit: "%",
+          ibgeUrls: (id) => [
+            "https://servicodados.ibge.gov.br/api/v3/agregados/6405/periodos/2010/variaveis/93?localidades=N6[" + id + "]"
+          ]
+        },
+        sexo: {
+          label: "Sexo",
+          unit: "%",
+          ibgeUrls: (id) => [
+            "https://servicodados.ibge.gov.br/api/v3/agregados/6442/periodos/2010/variaveis/93?localidades=N6[" + id + "]"
+          ]
+        },
+        idade: {
+          label: "Idade",
+          unit: "anos",
+          ibgeUrls: (id) => [
+            "https://servicodados.ibge.gov.br/api/v3/agregados/6448/periodos/2010/variaveis/93?localidades=N6[" + id + "]"
+          ]
+        },
+        renda: {
+          label: "Renda",
+          unit: "R$",
+          ibgeUrls: (id) => [
+            "https://servicodados.ibge.gov.br/api/v3/agregados/5938/periodos/2022/variaveis/37?localidades=N6[" + id + "]"
+          ]
+        }
+      };
+
       let map;
       let estadoLayer;
       let estadoGeoCache;
@@ -905,8 +1008,13 @@
         note: "Agravos neurologicos e malformacoes congenitas em recem-nascidos."
       };
       const selectedClimates = new Set();
+      let selectedSocioVariable = "escolaridade";
+      let selectedSocioScope = "municipal";
       let pendingExportType = null;
       const municipioGeoCache = new Map();
+      const socioValueCache = new Map();
+      let socioMunicipioValues = new Map();
+      let currentMapGeoJson = null;
       let mapReadyPromise = null;
 
       function setMapLoading(message, visible) {
@@ -995,6 +1103,8 @@
       function updateSelectionStatus() {
         const climates = Array.from(selectedClimates);
         const climateText = climates.length > 0 ? climates.join(", ") : "nenhuma variavel selecionada";
+        const socioLabel = socioMetadata[selectedSocioVariable].label;
+        const socioScopeLabel = selectedSocioScope === "geres" ? "GERES" : "Municipal";
         statusBox.innerHTML =
           "<small>Tema ativo</small><strong>" +
           selectedDisease.name +
@@ -1002,7 +1112,365 @@
           selectedDisease.agent +
           "</strong><small>Clima: " +
           climateText +
+          "</small><small>Sociodemográfico: " +
+          socioLabel +
+          " (" +
+          socioScopeLabel +
+          ")" +
           "</small>";
+      }
+
+      function fallbackSocioValue(variable, municipioId) {
+        const seed = String(municipioId)
+          .split("")
+          .reduce((acc, digit) => acc + Number(digit), 0);
+
+        if (variable === "escolaridade") {
+          return 55 + (seed % 35);
+        }
+        if (variable === "raca_cor") {
+          return 30 + (seed % 60);
+        }
+        if (variable === "sexo") {
+          return 45 + (seed % 10);
+        }
+        if (variable === "idade") {
+          return 24 + (seed % 22);
+        }
+        return 800 + (seed % 2800);
+      }
+
+      function findFirstIBGEValue(node) {
+        if (Array.isArray(node)) {
+          for (const item of node) {
+            const candidate = findFirstIBGEValue(item);
+            if (Number.isFinite(candidate)) {
+              return candidate;
+            }
+          }
+          return null;
+        }
+
+        if (node && typeof node === "object") {
+          if (typeof node.V === "string") {
+            const parsed = Number.parseFloat(node.V.replace(",", "."));
+            if (Number.isFinite(parsed)) {
+              return parsed;
+            }
+          }
+
+          for (const value of Object.values(node)) {
+            const candidate = findFirstIBGEValue(value);
+            if (Number.isFinite(candidate)) {
+              return candidate;
+            }
+          }
+        }
+
+        return null;
+      }
+
+      async function fetchSocioValueFromIBGE(variable, municipioId) {
+        const key = variable + ":" + municipioId;
+        if (socioValueCache.has(key)) {
+          return socioValueCache.get(key);
+        }
+
+        const meta = socioMetadata[variable];
+        for (const url of meta.ibgeUrls(municipioId)) {
+          try {
+            const response = await fetch(url);
+            if (!response.ok) {
+              continue;
+            }
+            const data = await response.json();
+            const value = findFirstIBGEValue(data);
+            if (Number.isFinite(value)) {
+              const resolved = { value, source: "IBGE" };
+              socioValueCache.set(key, resolved);
+              return resolved;
+            }
+          } catch (_) {
+            // ignora e tenta o próximo endpoint
+          }
+        }
+
+        const fallback = {
+          value: fallbackSocioValue(variable, municipioId),
+          source: "Estimativa padrão (fallback)"
+        };
+        socioValueCache.set(key, fallback);
+        return fallback;
+      }
+
+      function getSocioTargetMunicipios() {
+        if (selectedSocioScope === "municipal") {
+          const id = municipioSelect.value;
+          if (!id) {
+            return [];
+          }
+          return municipioCatalog.filter((m) => String(m.id) === String(id));
+        }
+
+        if (activeGeres === "ALL") {
+          return [];
+        }
+
+        const nomes = new Set((geresMunicipios[activeGeres] || []).map((name) => normalizeName(name)));
+        return municipioCatalog.filter((m) => nomes.has(normalizeName(m.nome)));
+      }
+
+      function socioColorScale(value, min, max) {
+        const safeRange = max - min === 0 ? 1 : max - min;
+        const ratio = Math.max(0, Math.min(1, (value - min) / safeRange));
+        const r = Math.round(102 + ratio * 118);
+        const g = Math.round(78 + (1 - ratio) * 102);
+        const b = Math.round(164 + (1 - ratio) * 46);
+        return "rgb(" + r + "," + g + "," + b + ")";
+      }
+
+      function fitOverlayBounds(layer) {
+        if (!layer || !map) {
+          return;
+        }
+        if (typeof layer.getBounds === "function") {
+          const bounds = layer.getBounds();
+          if (bounds && bounds.isValid && bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [22, 22] });
+          }
+        }
+      }
+
+      function featureCollectionFromGeoJson(data) {
+        if (!data) {
+          return { type: "FeatureCollection", features: [] };
+        }
+        if (data.type === "FeatureCollection") {
+          return data;
+        }
+        if (data.type === "Feature") {
+          return { type: "FeatureCollection", features: [data] };
+        }
+        return { type: "FeatureCollection", features: [] };
+      }
+
+      function getCurrentBaseFeatureCollection() {
+        if (municipioLayer) {
+          return featureCollectionFromGeoJson(municipioLayer.toGeoJSON());
+        }
+        if (geresLayerGroup) {
+          const features = [];
+          geresLayerGroup.eachLayer((layer) => {
+            const fc = featureCollectionFromGeoJson(layer.toGeoJSON());
+            features.push(...fc.features);
+          });
+          return { type: "FeatureCollection", features };
+        }
+        if (estadoGeoCache) {
+          return featureCollectionFromGeoJson(estadoGeoCache);
+        }
+        return null;
+      }
+
+      async function drawCategoryOverlay(category) {
+        await ensureMapReady();
+        clearOverlayLayer();
+
+        const base = getCurrentBaseFeatureCollection();
+        if (!base || base.features.length === 0) {
+          updateRobotMessage("Nao foi possivel montar a geometria base para o mapa.");
+          return null;
+        }
+
+        let fillColor = "#8a58cd";
+        let description = "saude";
+
+        if (category === "saude") {
+          fillColor = diseaseOverlayColor[selectedDisease.name] || "#8a58cd";
+          description = "saúde";
+        }
+
+        if (category === "climatico") {
+          if (selectedClimates.size === 0) {
+            updateRobotMessage("Selecione ao menos uma variavel climatica para baixar o mapa climático.");
+            return null;
+          }
+          const firstClimate = Array.from(selectedClimates)[0];
+          fillColor = climateOverlayColor[firstClimate] || "#4d87d7";
+          description = "climático";
+        }
+
+        const style = {
+          color: "#fff1ff",
+          weight: 2,
+          fillColor,
+          fillOpacity: category === "climatico" ? 0.42 : 0.5
+        };
+
+        overlayLayer = L.geoJSON(base, { style }).addTo(map);
+        fitOverlayBounds(overlayLayer);
+
+        currentMapGeoJson = {
+          type: "FeatureCollection",
+          features: base.features.map((feature) => ({
+            ...feature,
+            properties: {
+              ...(feature.properties || {}),
+              categoria_mapa: category,
+              doenca: selectedDisease.name,
+              variaveis_climaticas: Array.from(selectedClimates),
+              geres: activeGeres === "ALL" ? "Todas as GERES" : activeGeres,
+              municipio: municipioSelect.options[municipioSelect.selectedIndex]?.text || "Todos os municipios"
+            }
+          }))
+        };
+
+        updateRobotMessage("Mapa de <b>" + description + "</b> preparado para download.");
+        return currentMapGeoJson;
+      }
+
+      async function loadSocioValuesForSelection() {
+        const targets = getSocioTargetMunicipios();
+        if (targets.length === 0) {
+          if (selectedSocioScope === "municipal") {
+            updateRobotMessage("No nível municipal, selecione um municipio para carregar dados sociodemográficos.");
+          } else {
+            updateRobotMessage("No nível GERES, selecione uma GERES para carregar dados sociodemográficos.");
+          }
+          return false;
+        }
+
+        const values = new Map();
+        const responses = await Promise.all(
+          targets.map(async (municipio) => {
+            const resolved = await fetchSocioValueFromIBGE(selectedSocioVariable, municipio.id);
+            return { id: municipio.id, nome: municipio.nome, ...resolved };
+          })
+        );
+
+        responses.forEach((entry) => values.set(String(entry.id), entry));
+        socioMunicipioValues = values;
+
+        const sourceSet = new Set(responses.map((entry) => entry.source));
+        socioSourceInfo.textContent = "Fonte ativa: " + Array.from(sourceSet).join(" + ") + ".";
+        return true;
+      }
+
+      async function drawSociodemographicOverlay() {
+        const loaded = await loadSocioValuesForSelection();
+        if (!loaded) {
+          return null;
+        }
+
+        await ensureMapReady();
+        clearOverlayLayer();
+        clearGeresLayer();
+        clearMunicipioLayer();
+
+        const targets = getSocioTargetMunicipios();
+        const values = targets
+          .map((m) => socioMunicipioValues.get(String(m.id))?.value)
+          .filter((value) => Number.isFinite(value));
+
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+
+        const layers = await Promise.all(
+          targets.map(async (municipio) => {
+            const socio = socioMunicipioValues.get(String(municipio.id));
+            if (!socio) {
+              return null;
+            }
+            const geo = await fetchMunicipioGeo(municipio.id);
+            const color = socioColorScale(socio.value, min, max);
+            const layer = L.geoJSON(geo, {
+              style: {
+                color: "#f6e8ff",
+                weight: 1.4,
+                fillColor: color,
+                fillOpacity: 0.58
+              }
+            });
+            const meta = socioMetadata[selectedSocioVariable];
+            layer.bindPopup(
+              "Sociodemográfico - " +
+                municipio.nome +
+                "<br/>" +
+                meta.label +
+                ": " +
+                socio.value.toFixed(2) +
+                " " +
+                meta.unit +
+                "<br/>Fonte: " +
+                socio.source
+            );
+            return { municipio, socio, geo, layer };
+          })
+        );
+
+        const resolved = layers.filter((item) => item);
+        const featureGroup = L.featureGroup(resolved.map((entry) => entry.layer)).addTo(map);
+        overlayLayer = featureGroup;
+        fitOverlayBounds(featureGroup);
+
+        const meta = socioMetadata[selectedSocioVariable];
+        currentMapGeoJson = {
+          type: "FeatureCollection",
+          features: resolved.flatMap((entry) =>
+            featureCollectionFromGeoJson(entry.geo).features.map((feature) => ({
+              ...feature,
+              properties: {
+                ...(feature.properties || {}),
+                categoria_mapa: "sociodemografico",
+                variavel_sociodemografica: meta.label,
+                valor: entry.socio.value,
+                unidade: meta.unit,
+                fonte: entry.socio.source,
+                municipio_id: entry.municipio.id,
+                municipio_nome: entry.municipio.nome,
+                escopo: selectedSocioScope
+              }
+            }))
+          )
+        };
+
+        updateRobotMessage(
+          "Mapa sociodemográfico gerado: <b>" +
+            meta.label +
+            "</b> (" +
+            (selectedSocioScope === "geres" ? "nível GERES" : "nível municipal") +
+            ")."
+        );
+        return currentMapGeoJson;
+      }
+
+      function triggerGeoJsonDownload(data, fileName) {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/geo+json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      async function downloadCategoryMap(category) {
+        let geo = null;
+        if (category === "sociodemografico") {
+          geo = await drawSociodemographicOverlay();
+        } else {
+          geo = await drawCategoryOverlay(category);
+        }
+
+        if (!geo || !geo.features || geo.features.length === 0) {
+          return;
+        }
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const suffix = category === "climatico" ? "climatico" : category === "saude" ? "saude" : "sociodemografico";
+        triggerGeoJsonDownload(geo, "mapa_" + suffix + "_" + timestamp + ".geojson");
       }
 
       function activateDiseaseButton(button) {
@@ -1157,6 +1625,8 @@
           password,
           disease: selectedDisease.name,
           climates: Array.from(selectedClimates),
+          sociodemographic_variable: socioMetadata[selectedSocioVariable].label,
+          sociodemographic_scope: selectedSocioScope,
           geres: activeGeres === "ALL" ? "Todas as GERES" : activeGeres,
           municipio
         };
@@ -1175,16 +1645,18 @@
 
         if (municipioLayer) {
           overlayLayer = L.geoJSON(municipioLayer.toGeoJSON(), { style }).addTo(map);
-          map.fitBounds(overlayLayer.getBounds(), { padding: [22, 22] });
+          fitOverlayBounds(overlayLayer);
         } else if (geresLayerGroup) {
           const geos = [];
           geresLayerGroup.eachLayer((layer) => geos.push(layer.toGeoJSON()));
           overlayLayer = L.geoJSON(geos, { style }).addTo(map);
-          map.fitBounds(overlayLayer.getBounds(), { padding: [22, 22] });
+          fitOverlayBounds(overlayLayer);
         } else if (estadoGeoCache) {
           overlayLayer = L.geoJSON(estadoGeoCache, { style }).addTo(map);
-          map.fitBounds(overlayLayer.getBounds(), { padding: [18, 18] });
+          fitOverlayBounds(overlayLayer);
         }
+
+        currentMapGeoJson = getCurrentBaseFeatureCollection();
 
         animateRobot("bounce");
         robotSmile();
@@ -1368,6 +1840,27 @@
         });
       });
 
+      socioVariableSelect.addEventListener("change", () => {
+        selectedSocioVariable = socioVariableSelect.value;
+        updateSelectionStatus();
+        const label = socioMetadata[selectedSocioVariable].label;
+        updateRobotMessage("Variável sociodemográfica ativa: <b>" + label + "</b>.");
+      });
+
+      socioScopeSelect.addEventListener("change", () => {
+        selectedSocioScope = socioScopeSelect.value;
+        updateSelectionStatus();
+        updateRobotMessage(
+          "Escopo sociodemográfico ativo: <b>" +
+            (selectedSocioScope === "geres" ? "Nível GERES" : "Municipal geral") +
+            "</b>."
+        );
+      });
+
+      applySocioBtn.addEventListener("click", async () => {
+        await drawSociodemographicOverlay();
+      });
+
       geresSelect.addEventListener("change", async () => {
         activeGeres = geresSelect.value;
         applyMunicipioFilters();
@@ -1391,6 +1884,9 @@
       });
 
       generateOverlayBtn.addEventListener("click", generateOverlay);
+      downloadClimateMapBtn.addEventListener("click", async () => downloadCategoryMap("climatico"));
+      downloadHealthMapBtn.addEventListener("click", async () => downloadCategoryMap("saude"));
+      downloadSocioMapBtn.addEventListener("click", async () => downloadCategoryMap("sociodemografico"));
       exportPdfBtn.addEventListener("click", () => openAuthModal("pdf"));
       exportSheetBtn.addEventListener("click", () => openAuthModal("sheet"));
       cancelAuthBtn.addEventListener("click", closeAuthModal);
@@ -1401,6 +1897,7 @@
         "Eu tambem posso liberar PDF e imagens com senha de acesso.",
         "Selecione GERES e municipio para detalhar a analise territorial.",
         "Multiplas variaveis climaticas podem ser selecionadas simultaneamente.",
+        "Para dados sociodemográficos, escolha a variável IBGE e aplique no mapa.",
         "Use os icones para identificar rapidamente cada agravo."
       ];
       let hintIndex = 0;
