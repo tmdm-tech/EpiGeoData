@@ -1052,8 +1052,7 @@
         const nomes = geresMunicipios[geresName] || [];
         const normalizedSet = new Set(nomes.map((name) => normalizeName(name)));
         const mapped = municipioCatalog.filter((m) => normalizedSet.has(normalizeName(m.nome)));
-        const remaining = municipioCatalog.filter((m) => !normalizedSet.has(normalizeName(m.nome)));
-        return [...mapped, ...remaining];
+        return [...mapped];
       }
 
       function applyMunicipioFilters() {
