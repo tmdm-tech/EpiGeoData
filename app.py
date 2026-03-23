@@ -1,6 +1,8 @@
 import csv
 import io
+import json
 import os
+from pathlib import Path
 from datetime import datetime
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -97,3 +99,43 @@ def export_spreadsheet():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+@app.get("/api/climate-layers/<climate_type>")
+def get_climate_layers(climate_type: str) -> tuple[dict, int]:
+    """Retorna dados climáticos em GeoJSON"""
+    valid_types = ["precipitacao", "temperatura", "queimadas", "cobertura_vegetal"]
+    
+    if climate_type not in valid_types:
+        return {"error": f"Tipo climático inválido. Use: {', '.join(valid_types)}"}, 400
+    
+    data_file = Path(__file__).parent / f"data/climaticas/{climate_type}.geojson"
+    
+    if not data_file.exists():
+        return {"error": f"Dados não disponíveis para {climate_type}"}, 404
+    
+    with open(data_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    
+    return jsonify(data), 200
+
+
+@app.get("/api/climate-layers")
+def list_climate_layers() -> tuple[dict, int]:
+    """Lista todos os tipos de camadas climáticas disponíveis"""
+    climate_types = ["precipitacao", "temperatura", "queimadas", "cobertura_vegetal"]
+    data_dir = Path(__file__).parent / "data/climaticas"
+    
+    available = []
+    for climate_type in climate_types:
+        file_path = data_dir / f"{climate_type}.geojson"
+        if file_path.exists():
+            available.append({
+                "tipo": climate_type,
+                "url": f"/api/climate-layers/{climate_type}",
+                "status": "disponível"
+            })
+    
+    return jsonify({
+        "camadas": available,
+        "total": len(available)
+    }), 200
+

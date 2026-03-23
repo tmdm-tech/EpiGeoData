@@ -1,0 +1,34 @@
+{
+  "type": "FeatureCollection",
+  "name": "precipitacao_pernambuco_2024",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "municipio_id": 2604106,
+        "municipio_nome": "Recife",
+        "data": "2024-03-23",
+        "precipitacao_mm": 25.5,
+        "intensidade": "moderada"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-34.88, -8.05]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "municipio_id": 2611101,
+        "municipio_nome": "Caruaru",
+        "data": "2024-03-23",
+        "precipitacao_mm": 12.3,
+        "intensidade": "fraca"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-35.97, -8.28]
+      }
+    }
+  ]
+}
