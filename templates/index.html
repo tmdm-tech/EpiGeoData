@@ -674,6 +674,43 @@
         padding: 9px 10px;
       }
 
+      .auth-card label {
+        display: grid;
+        gap: 6px;
+        margin-top: 10px;
+        font-size: 12px;
+        color: #efdeff;
+      }
+
+      .role-choice {
+        margin-top: 10px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .role-btn {
+        border: 1px solid rgba(236, 219, 255, 0.7);
+        border-radius: 10px;
+        padding: 9px 10px;
+        background: rgba(255, 255, 255, 0.14);
+        color: #fff;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .role-btn.active {
+        background: linear-gradient(145deg, #bc8ef2, #8b57d0);
+      }
+
+      .password-block {
+        margin-top: 4px;
+      }
+
+      .password-block.hidden {
+        display: none;
+      }
+
       .auth-actions {
         margin-top: 12px;
         display: flex;
@@ -843,9 +880,9 @@
               <button class="danger" id="exportSheetBtn">Solicitar Relatório de Imagens</button>
             </div>
             <div class="download-actions">
-              <button class="secondary" id="downloadClimateMapBtn">Baixar mapa climático</button>
-              <button class="secondary" id="downloadHealthMapBtn">Baixar mapa saúde</button>
-              <button class="secondary" id="downloadSocioMapBtn">Baixar mapa sociodemográfico</button>
+              <button class="secondary" id="downloadClimateMapBtn">Visualizar mapa climático</button>
+              <button class="secondary" id="downloadHealthMapBtn">Visualizar mapa saúde</button>
+              <button class="secondary" id="downloadSocioMapBtn">Visualizar mapa sociodemográfico</button>
             </div>
           </article>
         </div>
@@ -868,8 +905,22 @@
     <div class="auth-modal" id="authModal" aria-hidden="true">
       <div class="auth-card">
         <h3>Acesso restrito</h3>
-        <p>Informe a senha para liberar a função selecionada.</p>
-        <input id="passwordInput" type="password" placeholder="Digite a senha" />
+        <p>Preencha o contato para retorno da solicitação e escolha seu perfil.</p>
+        <label>Nome para contato
+          <input id="contactNameInput" type="text" placeholder="Digite seu nome" />
+        </label>
+        <label>E-mail para contato
+          <input id="contactEmailInput" type="email" placeholder="Digite seu e-mail" />
+        </label>
+        <div class="role-choice" id="roleChoice">
+          <button class="role-btn" id="roleAdminBtn" type="button">Sou administrador</button>
+          <button class="role-btn" id="roleUserBtn" type="button">Sou usuário</button>
+        </div>
+        <div class="password-block hidden" id="passwordBlock">
+          <label>Senha de acesso
+            <input id="passwordInput" type="password" placeholder="Digite a senha" />
+          </label>
+        </div>
         <div class="error-msg" id="passwordError"></div>
         <div class="auth-actions">
           <button class="secondary" id="cancelAuthBtn">Cancelar</button>
@@ -900,7 +951,12 @@
       const applySocioBtn = document.getElementById("applySocioBtn");
       const socioSourceInfo = document.getElementById("socioSourceInfo");
       const authModal = document.getElementById("authModal");
+      const contactNameInput = document.getElementById("contactNameInput");
+      const contactEmailInput = document.getElementById("contactEmailInput");
       const passwordInput = document.getElementById("passwordInput");
+      const passwordBlock = document.getElementById("passwordBlock");
+      const roleAdminBtn = document.getElementById("roleAdminBtn");
+      const roleUserBtn = document.getElementById("roleUserBtn");
       const passwordError = document.getElementById("passwordError");
       const cancelAuthBtn = document.getElementById("cancelAuthBtn");
       const confirmAuthBtn = document.getElementById("confirmAuthBtn");
@@ -1011,6 +1067,7 @@
       let selectedSocioVariable = "escolaridade";
       let selectedSocioScope = "municipal";
       let pendingExportType = null;
+      let selectedRequesterRole = "";
       const municipioGeoCache = new Map();
       const socioValueCache = new Map();
       let socioMunicipioValues = new Map();
@@ -1444,18 +1501,6 @@
         return currentMapGeoJson;
       }
 
-      function triggerGeoJsonDownload(data, fileName) {
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/geo+json" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-      }
-
       async function downloadCategoryMap(category) {
         let geo = null;
         if (category === "sociodemografico") {
@@ -1468,9 +1513,8 @@
           return;
         }
 
-        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-        const suffix = category === "climatico" ? "climatico" : category === "saude" ? "saude" : "sociodemografico";
-        triggerGeoJsonDownload(geo, "mapa_" + suffix + "_" + timestamp + ".geojson");
+        const label = category === "climatico" ? "climático" : category === "saude" ? "saúde" : "sociodemográfico";
+        updateRobotMessage("Mapa <b>" + label + "</b> exibido na tela para visualização.");
       }
 
       function activateDiseaseButton(button) {
@@ -1623,6 +1667,9 @@
         const municipio = municipioSelect.options[municipioSelect.selectedIndex]?.text || "Todos os municipios";
         return {
           password,
+          requester_name: contactNameInput.value.trim(),
+          requester_email: contactEmailInput.value.trim(),
+          requester_role: selectedRequesterRole || "nao informado",
           disease: selectedDisease.name,
           climates: Array.from(selectedClimates),
           sociodemographic_variable: socioMetadata[selectedSocioVariable].label,
@@ -1630,6 +1677,15 @@
           geres: activeGeres === "ALL" ? "Todas as GERES" : activeGeres,
           municipio
         };
+      }
+
+      function selectRequesterRole(role) {
+        selectedRequesterRole = role;
+        roleAdminBtn.classList.toggle("active", role === "administrador");
+        roleUserBtn.classList.toggle("active", role === "usuario");
+        passwordBlock.classList.remove("hidden");
+        passwordError.textContent = "";
+        passwordInput.focus();
       }
 
       async function generateOverlay() {
@@ -1671,11 +1727,17 @@
 
       function openAuthModal(type) {
         pendingExportType = type;
+        contactNameInput.value = "";
+        contactEmailInput.value = "";
+        selectedRequesterRole = "";
+        roleAdminBtn.classList.remove("active");
+        roleUserBtn.classList.remove("active");
+        passwordBlock.classList.add("hidden");
         passwordInput.value = "";
         passwordError.textContent = "";
         authModal.classList.add("open");
         authModal.setAttribute("aria-hidden", "false");
-        passwordInput.focus();
+        contactNameInput.focus();
         robotWiggleEarring();
       }
 
@@ -1685,9 +1747,27 @@
       }
 
       async function runRestrictedAction() {
+        const contactName = contactNameInput.value.trim();
+        const contactEmail = contactEmailInput.value.trim();
+
+        if (!contactName) {
+          passwordError.textContent = "Informe o nome para contato.";
+          return;
+        }
+
+        if (!contactEmail || !contactEmail.includes("@")) {
+          passwordError.textContent = "Informe um e-mail de contato valido.";
+          return;
+        }
+
+        if (!selectedRequesterRole) {
+          passwordError.textContent = "Escolha primeiro: Sou administrador ou Sou usuário.";
+          return;
+        }
+
         const password = passwordInput.value;
         if (!password) {
-          passwordError.textContent = "Informe a senha de acesso.";
+          passwordError.textContent = "Informe a senha de acesso (etapa 2).";
           return;
         }
 
@@ -1859,6 +1939,14 @@
 
       applySocioBtn.addEventListener("click", async () => {
         await drawSociodemographicOverlay();
+      });
+
+      roleAdminBtn.addEventListener("click", () => {
+        selectRequesterRole("administrador");
+      });
+
+      roleUserBtn.addEventListener("click", () => {
+        selectRequesterRole("usuario");
       });
 
       geresSelect.addEventListener("change", async () => {

@@ -17,7 +17,7 @@ def _check_password(password: str) -> bool:
     return password == expected
 
 
-def _parse_payload() -> tuple[str, list[str], str, str, str, str]:
+def _parse_payload() -> tuple[str, list[str], str, str, str, str, str, str, str]:
     payload = request.get_json(silent=True) or {}
     disease = payload.get("disease", "Nao informado")
     climates = payload.get("climates", [])
@@ -25,7 +25,20 @@ def _parse_payload() -> tuple[str, list[str], str, str, str, str]:
     municipio = payload.get("municipio", "Todos os municipios")
     socio_variable = payload.get("sociodemographic_variable", "Nao informado")
     socio_scope = payload.get("sociodemographic_scope", "Nao informado")
-    return disease, climates, geres, municipio, socio_variable, socio_scope
+    requester_name = payload.get("requester_name", "Nao informado")
+    requester_email = payload.get("requester_email", "Nao informado")
+    requester_role = payload.get("requester_role", "Nao informado")
+    return (
+        disease,
+        climates,
+        geres,
+        municipio,
+        socio_variable,
+        socio_scope,
+        requester_name,
+        requester_email,
+        requester_role,
+    )
 
 
 @app.get("/")
@@ -47,7 +60,7 @@ def export_pdf():
     if not _check_password(payload.get("password", "")):
         return jsonify({"message": "Acesso negado"}), 403
 
-    disease, climates, geres, municipio, socio_variable, socio_scope = _parse_payload()
+    disease, climates, geres, municipio, socio_variable, socio_scope, requester_name, requester_email, requester_role = _parse_payload()
     climates_text = ", ".join(climates) if climates else "Nenhuma variavel selecionada"
 
     buffer = io.BytesIO()
@@ -62,7 +75,9 @@ def export_pdf():
     pdf.drawString(50, 695, f"GERES: {geres}")
     pdf.drawString(50, 670, f"Municipio: {municipio}")
     pdf.drawString(50, 645, f"Sociodemografico: {socio_variable} ({socio_scope})")
-    pdf.drawString(50, 620, "Observacao: Documento protegido por autenticacao no portal.")
+    pdf.drawString(50, 620, f"Solicitante: {requester_name} ({requester_role})")
+    pdf.drawString(50, 595, f"Email para retorno: {requester_email}")
+    pdf.drawString(50, 570, "Observacao: Documento protegido por autenticacao no portal.")
     pdf.showPage()
     pdf.save()
 
@@ -81,7 +96,7 @@ def export_spreadsheet():
     if not _check_password(payload.get("password", "")):
         return jsonify({"message": "Acesso negado"}), 403
 
-    disease, climates, geres, municipio, socio_variable, socio_scope = _parse_payload()
+    disease, climates, geres, municipio, socio_variable, socio_scope, requester_name, requester_email, requester_role = _parse_payload()
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["campo", "valor"])
@@ -92,6 +107,9 @@ def export_spreadsheet():
     writer.writerow(["variaveis_climaticas", " | ".join(climates) if climates else "nenhuma"])
     writer.writerow(["variavel_sociodemografica", socio_variable])
     writer.writerow(["escopo_sociodemografico", socio_scope])
+    writer.writerow(["solicitante_nome", requester_name])
+    writer.writerow(["solicitante_email", requester_email])
+    writer.writerow(["solicitante_perfil", requester_role])
 
     content = io.BytesIO(output.getvalue().encode("utf-8"))
     return send_file(
