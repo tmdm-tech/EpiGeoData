@@ -781,7 +781,6 @@
     </div>
 
     <script
-      defer
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
@@ -1243,6 +1242,24 @@
         applyMunicipioFilters();
       }
 
+      function waitForLeaflet(timeoutMs = 5000) {
+        const start = Date.now();
+        return new Promise((resolve, reject) => {
+          const check = () => {
+            if (window.L && typeof window.L.map === "function") {
+              resolve();
+              return;
+            }
+            if (Date.now() - start > timeoutMs) {
+              reject(new Error("Leaflet nao carregou a tempo"));
+              return;
+            }
+            setTimeout(check, 30);
+          };
+          check();
+        });
+      }
+
       function ensureMapReady() {
         if (mapReadyPromise) {
           return mapReadyPromise;
@@ -1251,7 +1268,8 @@
         mapReadyPromise = new Promise((resolve, reject) => {
           const start = () => {
             setMapLoading("Carregando mapa...", true);
-            loadPernambucoBase()
+            waitForLeaflet()
+              .then(() => loadPernambucoBase())
               .then(() => {
                 setMapLoading("", false);
                 resolve();
