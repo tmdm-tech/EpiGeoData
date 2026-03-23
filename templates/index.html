@@ -6,6 +6,7 @@
     <title>EpiGeoData</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://servicodados.ibge.gov.br" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&display=swap"
       rel="stylesheet"
@@ -144,7 +145,7 @@
         text-align: left;
         font-size: 12px;
         line-height: 1.3;
-        padding: 10px 10px;
+        padding: 10px;
         cursor: pointer;
         transition: 140ms ease;
         display: grid;
@@ -154,8 +155,7 @@
       }
 
       .chip .icon {
-        font-size: 28px;
-        text-align: center;
+        font-size: 26px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -185,22 +185,6 @@
         transform: translateY(-1px) scale(1.02);
       }
 
-      .chip strong {
-        display: block;
-        font-weight: 700;
-      }
-
-      .chip span {
-        color: #f0ddff;
-      }
-
-      .chip:hover,
-      .chip.active {
-        background: var(--chip-hover);
-        border-color: #fff;
-        transform: translateY(-1px);
-      }
-
       .robot-wrap {
         display: grid;
         place-items: center;
@@ -216,22 +200,86 @@
       }
 
       @keyframes robotIdle {
-        0%, 100% { transform: translateY(0px); }
-        50% { transform: translateY(-6px); }
+        0%,
+        100% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-6px);
+        }
       }
 
       @keyframes robotBounce {
-        0%, 100% { transform: scale(1) translateY(0px); }
-        50% { transform: scale(1.05) translateY(-8px); }
+        0%,
+        100% {
+          transform: scale(1) translateY(0px);
+        }
+        50% {
+          transform: scale(1.05) translateY(-8px);
+        }
       }
 
       @keyframes robotSpin {
-        0% { transform: rotateZ(0deg); }
-        100% { transform: rotateZ(360deg); }
+        0% {
+          transform: rotateZ(0deg);
+        }
+        100% {
+          transform: rotateZ(360deg);
+        }
       }
 
-      .robot.bounce { animation: robotBounce 0.6s ease-in-out !important; }
-      .robot.spin { animation: robotSpin 0.8s ease-in-out !important; }
+      @keyframes blink {
+        0%,
+        100% {
+          height: 12px;
+        }
+        50% {
+          height: 2px;
+        }
+      }
+
+      @keyframes smileAnim {
+        0%,
+        100% {
+          border-bottom-width: 3px;
+        }
+        50% {
+          border-bottom-width: 5px;
+          transform: scaleX(1.1);
+        }
+      }
+
+      @keyframes wiggle {
+        0%,
+        100% {
+          transform: rotate(0deg);
+        }
+        25% {
+          transform: rotate(-10deg);
+        }
+        75% {
+          transform: rotate(10deg);
+        }
+      }
+
+      @keyframes badgePulse {
+        0%,
+        100% {
+          transform: scale(1);
+          filter: brightness(1);
+        }
+        50% {
+          transform: scale(1.08);
+          filter: brightness(1.2);
+        }
+      }
+
+      .robot.bounce {
+        animation: robotBounce 0.6s ease-in-out !important;
+      }
+
+      .robot.spin {
+        animation: robotSpin 0.8s ease-in-out !important;
       }
 
       .hair {
@@ -263,12 +311,21 @@
         height: 12px;
         border-radius: 99px;
         background: #2d1b4a;
-                display: grid;
-                place-items: center;
-                transition: all 0.2s ease;
-              }
         display: grid;
         place-items: center;
+        transition: all 0.2s ease;
+      }
+
+      .eye.left {
+        left: 22px;
+      }
+
+      .eye.right {
+        right: 22px;
+      }
+
+      .eye.blink {
+        animation: blink 0.3s ease-in-out;
       }
 
       .eye .pupil {
@@ -279,24 +336,6 @@
         box-shadow: 0 0 8px rgba(149, 255, 255, 0.8);
       }
 
-      .eye.left {
-        left: 22px;
-      }
-
-      .eye.right {
-        right: 22px;
-            }
-
-            .eye.blink {
-              animation: blink 0.3s ease-in-out;
-            }
-
-            @keyframes blink {
-              0%, 100% { height: 12px; }
-              50% { height: 2px; }
-            }
-      }
-
       .mouth {
         position: absolute;
         left: 40px;
@@ -305,18 +344,11 @@
         height: 10px;
         border-radius: 0 0 16px 16px;
         border-bottom: 3px solid #a156d5;
-              border-bottom: 3px solid #a156d5;
-              transition: all 0.3s ease;
-            }
+        transition: all 0.3s ease;
+      }
 
-            .mouth.smile {
-              animation: smileAnim 0.4s ease-in-out;
-            }
-
-            @keyframes smileAnim {
-              0%, 100% { border-bottom-width: 3px; }
-              50% { border-bottom-width: 5px; transform: scaleX(1.1); }
-            }
+      .mouth.smile {
+        animation: smileAnim 0.4s ease-in-out;
       }
 
       .earring {
@@ -326,9 +358,7 @@
         border-radius: 50%;
         background: #c8f4ff;
         box-shadow: 0 0 10px rgba(186, 241, 255, 0.8);
-              box-shadow: 0 0 10px rgba(186, 241, 255, 0.8);
-              transition: all 0.2s ease;
-            }
+        transition: all 0.2s ease;
       }
 
       .earring.left {
@@ -338,19 +368,11 @@
 
       .earring.right {
         right: -6px;
-                top: 74px;
-              }
-
-              .earring.wiggle {
-                animation: wiggle 0.5s ease-in-out;
-              }
-
-              @keyframes wiggle {
-                0%, 100% { transform: rotate(0deg); }
-                25% { transform: rotate(-10deg); }
-                75% { transform: rotate(10deg); }
-              }
         top: 74px;
+      }
+
+      .earring.wiggle {
+        animation: wiggle 0.5s ease-in-out;
       }
 
       .neck {
@@ -383,14 +405,7 @@
         border-radius: 50%;
         background: linear-gradient(130deg, var(--accent-2), #8dc2ff);
         box-shadow: 0 0 14px rgba(130, 222, 255, 0.6);
-              box-shadow: 0 0 14px rgba(130, 222, 255, 0.6);
-              animation: badgePulse 2s ease-in-out infinite;
-            }
-
-            @keyframes badgePulse {
-              0%, 100% { transform: scale(1); filter: brightness(1); }
-              50% { transform: scale(1.08); filter: brightness(1.2); }
-            }
+        animation: badgePulse 2s ease-in-out infinite;
       }
 
       .speech {
@@ -419,7 +434,6 @@
       .status small {
         display: block;
         color: #d5ffeb;
-        opacity: 0.95;
       }
 
       .status strong {
@@ -467,19 +481,52 @@
         color: #f3e7ff;
       }
 
-      #map {
+      .map-shell {
         margin-top: 12px;
+        position: relative;
+      }
+
+      #map {
         width: 100%;
         height: 340px;
         border-radius: 14px;
         border: 1px solid rgba(225, 198, 255, 0.44);
         overflow: hidden;
         filter: brightness(0.8) contrast(1.1);
+        background: #1a0f2e;
       }
 
       .leaflet-container {
         background: #1a0f2e !important;
       }
+
+      .map-loading {
+        position: absolute;
+        inset: 0;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        font-size: 13px;
+        font-weight: 700;
+        color: #f7e8ff;
+        background: linear-gradient(
+          110deg,
+          rgba(44, 20, 72, 0.9) 8%,
+          rgba(68, 36, 108, 0.95) 18%,
+          rgba(44, 20, 72, 0.9) 33%
+        );
+        background-size: 200% 100%;
+        animation: mapPulse 1.2s linear infinite;
+      }
+
+      .map-loading.hidden {
+        display: none;
+      }
+
+      @keyframes mapPulse {
+        to {
+          background-position-x: -200%;
+        }
       }
 
       .panel-actions {
@@ -629,59 +676,35 @@
             <div class="chip-grid" id="diseaseButtons">
               <button class="chip active" data-type="doenca" data-name="Sindrome Congenita da Zika" data-agent="Virus Zika" data-note="Agravos neurologicos e malformacoes congenitas em recem-nascidos.">
                 <div class="icon">🧠</div>
-                <div class="chip-content">
-                  <strong>Zika</strong>
-                  <span>Virus Zika</span>
-                </div>
+                <div class="chip-content"><strong>Zika</strong><span>Virus Zika</span></div>
               </button>
               <button class="chip" data-type="doenca" data-name="Covid 19" data-agent="SARS-CoV-2" data-note="Agravos respiratorios agudos e complicacoes sistemicas.">
                 <div class="icon">🫁</div>
-                <div class="chip-content">
-                  <strong>Covid 19</strong>
-                  <span>SARS-CoV-2</span>
-                </div>
+                <div class="chip-content"><strong>Covid 19</strong><span>SARS-CoV-2</span></div>
               </button>
               <button class="chip" data-type="doenca" data-name="Dengue" data-agent="Virus da Dengue (DENV 1-4)" data-note="Agravos febris com risco de formas graves.">
                 <div class="icon">🦟</div>
-                <div class="chip-content">
-                  <strong>Dengue</strong>
-                  <span>DENV 1-4</span>
-                </div>
+                <div class="chip-content"><strong>Dengue</strong><span>DENV 1-4</span></div>
               </button>
               <button class="chip" data-type="doenca" data-name="Esquistossomose" data-agent="Schistosoma mansoni" data-note="Agravos hepatointestinais associados a exposicao hidrica.">
                 <div class="icon">🌊</div>
-                <div class="chip-content">
-                  <strong>Esquistossomose</strong>
-                  <span>S. mansoni</span>
-                </div>
+                <div class="chip-content"><strong>Esquistossomose</strong><span>S. mansoni</span></div>
               </button>
               <button class="chip" data-type="doenca" data-name="Tuberculose" data-agent="Mycobacterium tuberculosis" data-note="Agravos pulmonares persistentes e transmissao comunitaria.">
                 <div class="icon">🫂</div>
-                <div class="chip-content">
-                  <strong>Tuberculose</strong>
-                  <span>M. tuberculosis</span>
-                </div>
+                <div class="chip-content"><strong>Tuberculose</strong><span>M. tuberculosis</span></div>
               </button>
               <button class="chip" data-type="doenca" data-name="Monkeypox" data-agent="Virus mpox" data-note="Agravos dermatologicos e sindromes febris.">
                 <div class="icon">🐵</div>
-                <div class="chip-content">
-                  <strong>Monkeypox</strong>
-                  <span>Virus mpox</span>
-                </div>
+                <div class="chip-content"><strong>Monkeypox</strong><span>Virus mpox</span></div>
               </button>
               <button class="chip" data-type="doenca" data-name="Chikungunya" data-agent="Virus Chikungunya" data-note="Agravos febris com artralgia intensa.">
                 <div class="icon">🦠</div>
-                <div class="chip-content">
-                  <strong>Chikungunya</strong>
-                  <span>Virus Chikungunya</span>
-                </div>
+                <div class="chip-content"><strong>Chikungunya</strong><span>Virus Chikungunya</span></div>
               </button>
               <button class="chip" data-type="doenca" data-name="Febre Oropouche" data-agent="Virus Oropouche" data-note="Agravos febris com surtos em areas urbano-rurais.">
                 <div class="icon">🌡️</div>
-                <div class="chip-content">
-                  <strong>Oropouche</strong>
-                  <span>Virus Oropouche</span>
-                </div>
+                <div class="chip-content"><strong>Oropouche</strong><span>Virus Oropouche</span></div>
               </button>
             </div>
           </article>
@@ -692,36 +715,24 @@
             <div class="chip-grid" id="climateButtons">
               <button class="chip" data-type="clima" data-name="Precipitacao" data-note="Acumulado de chuva para correlacao com vetores.">
                 <div class="icon">🌧️</div>
-                <div class="chip-content">
-                  <strong>Precipitacao</strong>
-                  <span>Camada climatica</span>
-                </div>
+                <div class="chip-content"><strong>Precipitacao</strong><span>Camada climatica</span></div>
               </button>
               <button class="chip" data-type="clima" data-name="Temperatura" data-note="Leitura de sazonalidade dos agravos.">
                 <div class="icon">🌡️</div>
-                <div class="chip-content">
-                  <strong>Temperatura</strong>
-                  <span>Camada climatica</span>
-                </div>
+                <div class="chip-content"><strong>Temperatura</strong><span>Camada climatica</span></div>
               </button>
               <button class="chip" data-type="clima" data-name="Queimadas" data-note="Focos de calor e impactos ambientais.">
                 <div class="icon">🔥</div>
-                <div class="chip-content">
-                  <strong>Queimadas</strong>
-                  <span>Camada climatica</span>
-                </div>
+                <div class="chip-content"><strong>Queimadas</strong><span>Camada climatica</span></div>
               </button>
               <button class="chip" data-type="clima" data-name="Cobertura vegetal" data-note="Contexto ecologico dos territorios.">
                 <div class="icon">🌿</div>
-                <div class="chip-content">
-                  <strong>Cobertura vegetal</strong>
-                  <span>Camada climatica</span>
-                </div>
+                <div class="chip-content"><strong>Cobertura vegetal</strong><span>Camada climatica</span></div>
               </button>
             </div>
           </article>
 
-          <article class="map-card">
+          <article class="map-card" id="mapCard">
             <h2>Mini mapa: Pernambuco por GERES e município</h2>
             <p>Filtragem em tempo real + geração de mapa sobreposto.</p>
             <div class="filters">
@@ -729,7 +740,10 @@
               <label>Busca por municipio<input id="municipioSearch" type="search" placeholder="Digite para filtrar" /></label>
               <label>Municipio<select id="municipioSelect"><option value="">Todos os municipios</option></select></label>
             </div>
-            <div id="map" aria-label="Mapa de Pernambuco por GERES e municipio"></div>
+            <div class="map-shell">
+              <div id="map" aria-label="Mapa de Pernambuco por GERES e municipio"></div>
+              <div class="map-loading" id="mapLoading">Carregando mapa em segundo plano...</div>
+            </div>
             <div class="panel-actions">
               <button class="primary" id="generateOverlayBtn">Gerar mapa sobreposto</button>
               <button class="secondary" id="exportPdfBtn">Solicitar Relatório PDF</button>
@@ -767,6 +781,7 @@
     </div>
 
     <script
+      defer
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
@@ -786,6 +801,8 @@
       const cancelAuthBtn = document.getElementById("cancelAuthBtn");
       const confirmAuthBtn = document.getElementById("confirmAuthBtn");
       const techRobot = document.getElementById("techRobot");
+      const mapLoading = document.getElementById("mapLoading");
+      const mapCard = document.getElementById("mapCard");
 
       const geresMunicipios = {
         "I GERES": ["Recife", "Moreno", "Jaboatão dos Guararapes", "Paulista", "Camaragibe", "Cabo de Santo Agostinho", "Olinda", "Igarassu", "Abreu e Lima", "Fernando de Noronha", "Glória do Goitá", "Ilha de Itamaracá"],
@@ -843,6 +860,40 @@
       };
       const selectedClimates = new Set();
       let pendingExportType = null;
+      const municipioGeoCache = new Map();
+      let mapReadyPromise = null;
+
+      function setMapLoading(message, visible) {
+        mapLoading.textContent = message;
+        mapLoading.classList.toggle("hidden", !visible);
+      }
+
+      function animateRobot(animationType) {
+        techRobot.classList.remove("bounce", "spin");
+        void techRobot.offsetWidth;
+        techRobot.classList.add(animationType);
+        setTimeout(() => techRobot.classList.remove(animationType), 700);
+      }
+
+      function robotBlink() {
+        document.querySelectorAll(".eye").forEach((eye) => {
+          eye.classList.add("blink");
+          setTimeout(() => eye.classList.remove("blink"), 300);
+        });
+      }
+
+      function robotSmile() {
+        const mouth = document.querySelector(".mouth");
+        mouth.classList.add("smile");
+        setTimeout(() => mouth.classList.remove("smile"), 400);
+      }
+
+      function robotWiggleEarring() {
+        document.querySelectorAll(".earring").forEach((earring) => {
+          earring.classList.add("wiggle");
+          setTimeout(() => earring.classList.remove("wiggle"), 500);
+        });
+      }
 
       function normalizeName(name) {
         return name
@@ -858,22 +909,34 @@
         return municipioCatalog.find((item) => normalizeName(item.nome) === n);
       }
 
+      async function fetchMunicipioGeo(id) {
+        if (municipioGeoCache.has(id)) {
+          return municipioGeoCache.get(id);
+        }
+        const response = await fetch(
+          "https://servicodados.ibge.gov.br/api/v3/malhas/municipios/" + id + "?formato=application/vnd.geo+json&qualidade=minima"
+        );
+        const geojson = await response.json();
+        municipioGeoCache.set(id, geojson);
+        return geojson;
+      }
+
       function clearOverlayLayer() {
-        if (overlayLayer) {
+        if (overlayLayer && map) {
           map.removeLayer(overlayLayer);
           overlayLayer = null;
         }
       }
 
       function clearMunicipioLayer() {
-        if (municipioLayer) {
+        if (municipioLayer && map) {
           map.removeLayer(municipioLayer);
           municipioLayer = null;
         }
       }
 
       function clearGeresLayer() {
-        if (geresLayerGroup) {
+        if (geresLayerGroup && map) {
           map.removeLayer(geresLayerGroup);
           geresLayerGroup = null;
         }
@@ -881,37 +944,6 @@
 
       function updateRobotMessage(msg) {
         speechBox.innerHTML = "<strong>Assistente EpiGeo</strong>" + msg;
-
-            function animateRobot(animationType) {
-              techRobot.classList.remove("bounce", "spin");
-              void techRobot.offsetWidth;
-              techRobot.classList.add(animationType);
-              setTimeout(() => {
-                techRobot.classList.remove(animationType);
-              }, 600);
-            }
-
-            function robotBlink() {
-              const eyes = document.querySelectorAll(".eye");
-              eyes.forEach(eye => {
-                eye.classList.add("blink");
-                setTimeout(() => eye.classList.remove("blink"), 300);
-              });
-            }
-
-            function robotSmile() {
-              const mouth = document.querySelector(".mouth");
-              mouth.classList.add("smile");
-              setTimeout(() => mouth.classList.remove("smile"), 400);
-            }
-
-            function robotWiggleEarring() {
-              const earrings = document.querySelectorAll(".earring");
-              earrings.forEach(earring => {
-                earring.classList.add("wiggle");
-                setTimeout(() => earring.classList.remove("wiggle"), 500);
-              });
-            }
       }
 
       function updateSelectionStatus() {
@@ -930,11 +962,8 @@
       function activateDiseaseButton(button) {
         document.querySelectorAll("#diseaseButtons .chip").forEach((el) => el.classList.remove("active"));
         button.classList.add("active");
-              document.querySelectorAll("#diseaseButtons .chip").forEach((el) => el.classList.remove("active"));
-              button.classList.add("active");
-              animateRobot("bounce");
-              robotBlink();
-            }
+        animateRobot("bounce");
+        robotBlink();
       }
 
       function toggleClimateButton(button) {
@@ -944,13 +973,9 @@
           button.classList.remove("active");
         } else {
           selectedClimates.add(climate);
-                    selectedClimates.add(climate);
-                    button.classList.add("active");
-                    animateRobot("spin");
-                    robotWiggleEarring();
-                  }
-                }
           button.classList.add("active");
+          animateRobot("spin");
+          robotWiggleEarring();
         }
       }
 
@@ -993,17 +1018,14 @@
       }
 
       async function drawMunicipioById(id, label) {
+        await ensureMapReady();
         clearOverlayLayer();
         clearMunicipioLayer();
         if (!id) {
           return;
         }
 
-        const response = await fetch(
-          "https://servicodados.ibge.gov.br/api/v3/malhas/municipios/" + id + "?formato=application/vnd.geo+json&qualidade=minima"
-        );
-        const geojson = await response.json();
-
+        const geojson = await fetchMunicipioGeo(id);
         municipioLayer = L.geoJSON(geojson, {
           style: {
             color: "#f4ddff",
@@ -1018,6 +1040,7 @@
       }
 
       async function drawGeres(geresName) {
+        await ensureMapReady();
         clearOverlayLayer();
         clearGeresLayer();
         clearMunicipioLayer();
@@ -1031,33 +1054,37 @@
 
         const municipios = geresMunicipios[geresName] || [];
         const color = geresColors[geresName] || "#8f5ad0";
-        const layers = [];
 
-        for (const nome of municipios) {
-          const item = municipioByName(nome);
-          if (!item) {
-            continue;
-          }
-
-          const response = await fetch(
-            "https://servicodados.ibge.gov.br/api/v3/malhas/municipios/" + item.id + "?formato=application/vnd.geo+json&qualidade=minima"
-          );
-          const geojson = await response.json();
-          const layer = L.geoJSON(geojson, {
-            style: {
-              color: "#f8ebff",
-              weight: 1.5,
-              fillColor: color,
-              fillOpacity: 0.38
+        const geos = await Promise.all(
+          municipios.map(async (nome) => {
+            const item = municipioByName(nome);
+            if (!item) {
+              return null;
             }
+            return {
+              nome: item.nome,
+              geo: await fetchMunicipioGeo(item.id)
+            };
+          })
+        );
+
+        const layers = geos
+          .filter((g) => g)
+          .map((entry) => {
+            const layer = L.geoJSON(entry.geo, {
+              style: {
+                color: "#f8ebff",
+                weight: 1.5,
+                fillColor: color,
+                fillOpacity: 0.38
+              }
+            });
+            layer.bindPopup(geresName + " - " + entry.nome);
+            return layer;
           });
-          layer.bindPopup(geresName + " - " + item.nome);
-          layers.push(layer);
-        }
 
         geresLayerGroup = L.layerGroup(layers).addTo(map);
-        const bounds = [];
-        layers.forEach((layer) => bounds.push(layer.getBounds()));
+        const bounds = layers.map((layer) => layer.getBounds());
         if (bounds.length > 0) {
           const merged = bounds[0];
           for (let i = 1; i < bounds.length; i += 1) {
@@ -1093,32 +1120,11 @@
       async function generateOverlay() {
         if (selectedClimates.size === 0) {
           updateRobotMessage("Selecione ao menos uma variavel climatica antes de gerar o mapa sobreposto.");
-                    updateRobotMessage("Selecione ao menos uma variavel climatica antes de gerar o mapa sobreposto.");
-                    robotBlink();
-                    return;
-                  }
-
-                  clearOverlayLayer();
-                  const style = buildOverlayStyle();
-
-                  if (municipioLayer) {
-                    overlayLayer = L.geoJSON(municipioLayer.toGeoJSON(), { style }).addTo(map);
-                    map.fitBounds(overlayLayer.getBounds(), { padding: [22, 22] });
-                  } else if (geresLayerGroup) {
-                    const geos = [];
-                    geresLayerGroup.eachLayer((layer) => geos.push(layer.toGeoJSON()));
-                    overlayLayer = L.geoJSON(geos, { style }).addTo(map);
-                    map.fitBounds(overlayLayer.getBounds(), { padding: [22, 22] });
-                  } else if (estadoGeoCache) {
-                    overlayLayer = L.geoJSON(estadoGeoCache, { style }).addTo(map);
-                    map.fitBounds(overlayLayer.getBounds(), { padding: [18, 18] });
-                  }
-
-                  animateRobot("bounce");
-                  robotSmile();
+          robotBlink();
           return;
         }
 
+        await ensureMapReady();
         clearOverlayLayer();
         const style = buildOverlayStyle();
 
@@ -1135,6 +1141,8 @@
           map.fitBounds(overlayLayer.getBounds(), { padding: [18, 18] });
         }
 
+        animateRobot("bounce");
+        robotSmile();
         updateRobotMessage(
           "Mapa sobreposto gerado para <b>" +
             selectedDisease.name +
@@ -1151,9 +1159,7 @@
         authModal.classList.add("open");
         authModal.setAttribute("aria-hidden", "false");
         passwordInput.focus();
-              passwordInput.focus();
-              robotWiggleEarring();
-            }
+        robotWiggleEarring();
       }
 
       function closeAuthModal() {
@@ -1176,10 +1182,7 @@
 
         if (!authResponse.ok) {
           passwordError.textContent = "Senha invalida.";
-                    passwordError.textContent = "Senha invalida.";
-                    robotBlink();
-                    return;
-                  }
+          robotBlink();
           return;
         }
 
@@ -1199,13 +1202,6 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = pendingExportType === "pdf" ? "relatorio_epigeodata.pdf" : "epigeodata_planilha.csv";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        closeAuthModal();
-        updateRobotMessage("Arquivo protegido gerado com sucesso.");
         a.download = pendingExportType === "pdf" ? "relatorio_epigeodata.pdf" : "epigeodata_images.csv";
         document.body.appendChild(a);
         a.click();
@@ -1224,9 +1220,11 @@
           attribution: "&copy; OpenStreetMap contributors"
         }).addTo(map);
 
-        const estadoResponse = await fetch(
-          "https://servicodados.ibge.gov.br/api/v3/malhas/estados/26?formato=application/vnd.geo+json&qualidade=minima"
-        );
+        const [estadoResponse, municipiosResponse] = await Promise.all([
+          fetch("https://servicodados.ibge.gov.br/api/v3/malhas/estados/26?formato=application/vnd.geo+json&qualidade=minima"),
+          fetch("https://servicodados.ibge.gov.br/api/v1/localidades/estados/26/municipios")
+        ]);
+
         const estadoGeo = await estadoResponse.json();
         estadoGeoCache = estadoGeo;
 
@@ -1240,10 +1238,38 @@
         }).addTo(map);
         map.fitBounds(estadoLayer.getBounds(), { padding: [18, 18] });
 
-        const municipiosResponse = await fetch("https://servicodados.ibge.gov.br/api/v1/localidades/estados/26/municipios");
         municipioCatalog = await municipiosResponse.json();
         municipioCatalog.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
         applyMunicipioFilters();
+      }
+
+      function ensureMapReady() {
+        if (mapReadyPromise) {
+          return mapReadyPromise;
+        }
+
+        mapReadyPromise = new Promise((resolve, reject) => {
+          const start = () => {
+            setMapLoading("Carregando mapa...", true);
+            loadPernambucoBase()
+              .then(() => {
+                setMapLoading("", false);
+                resolve();
+              })
+              .catch((error) => {
+                setMapLoading("Nao foi possivel carregar o mapa. Tente novamente.", true);
+                reject(error);
+              });
+          };
+
+          if ("requestIdleCallback" in window) {
+            window.requestIdleCallback(start, { timeout: 1200 });
+          } else {
+            setTimeout(start, 120);
+          }
+        });
+
+        return mapReadyPromise;
       }
 
       document.querySelectorAll("#diseaseButtons .chip").forEach((button) => {
@@ -1282,11 +1308,8 @@
         activeGeres = geresSelect.value;
         applyMunicipioFilters();
         await drawGeres(activeGeres);
+        robotWiggleEarring();
         updateRobotMessage("GERES selecionada: <b>" + (activeGeres === "ALL" ? "Todas as GERES" : activeGeres) + "</b>.");
-              await drawGeres(activeGeres);
-              robotWiggleEarring();
-              updateRobotMessage("GERES selecionada: <b>" + (activeGeres === "ALL" ? "Todas as GERES" : activeGeres) + "</b>.");
-            });
       });
 
       municipioSearch.addEventListener("input", () => {
@@ -1298,11 +1321,8 @@
         const municipioLabel = municipioSelect.options[municipioSelect.selectedIndex]?.text || "";
         await drawMunicipioById(municipioId, municipioLabel);
         if (municipioId) {
+          robotSmile();
           updateRobotMessage("Municipio selecionado: <b>" + municipioLabel + "</b>.");
-                  updateRobotMessage("Municipio selecionado: <b>" + municipioLabel + "</b>.");
-                  robotSmile();
-                }
-              });
         }
       });
 
@@ -1314,26 +1334,17 @@
 
       const robotHints = [
         "Toque em gerar mapa sobreposto para visualizar o cruzamento entre agravo e clima.",
-        "Eu tambem posso liberar PDF e planilha com senha de acesso.",
-        "Selecione GERES e municipio para detalhar a analise territorial."
+        "Eu tambem posso liberar PDF e imagens com senha de acesso.",
+        "Selecione GERES e municipio para detalhar a analise territorial.",
+        "Multiplas variaveis climaticas podem ser selecionadas simultaneamente.",
+        "Use os icones para identificar rapidamente cada agravo."
       ];
       let hintIndex = 0;
       techRobot.addEventListener("click", () => {
         hintIndex = (hintIndex + 1) % robotHints.length;
+        robotBlink();
+        robotSmile();
         updateRobotMessage(robotHints[hintIndex]);
-              "Toque em gerar mapa sobreposto para visualizar o cruzamento entre agravo e clima.",
-              "Eu tambem posso liberar PDF e imagens com senha de acesso.",
-              "Selecione GERES e municipio para detalhar a analise territorial.",
-              "Múltiplas variáveis climáticas podem ser selecionadas simultaneamente!",
-              "Use os ícones coloridos para identificar rapidamente cada agravo de saude."
-            ];
-            let hintIndex = 0;
-            techRobot.addEventListener("click", () => {
-              hintIndex = (hintIndex + 1) % robotHints.length;
-              robotBlink();
-              robotSmile();
-              updateRobotMessage(robotHints[hintIndex]);
-            });
       });
 
       const pupils = Array.from(document.querySelectorAll(".pupil"));
@@ -1348,11 +1359,18 @@
         });
       });
 
+      function scheduleMapBootstrap() {
+        ensureMapReady().catch(() => {
+          updateRobotMessage("Nao foi possivel carregar o mapa externo agora. Verifique a conexao.");
+        });
+      }
+
+      mapCard.addEventListener("mouseenter", scheduleMapBootstrap, { once: true });
+      mapCard.addEventListener("touchstart", scheduleMapBootstrap, { once: true });
+      setTimeout(scheduleMapBootstrap, 80);
+
       fillGeresSelect();
       updateSelectionStatus();
-      loadPernambucoBase().catch(() => {
-        updateRobotMessage("Nao foi possivel carregar o mapa externo agora. Verifique a conexao.");
-      });
     </script>
   </body>
 </html>
