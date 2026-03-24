@@ -29,6 +29,13 @@ def _normalize_token(value: str) -> str:
     return value
 
 
+def _normalize_header(value: str) -> str:
+    value = str(value or "").strip().lower()
+    value = re.sub(r"\s+", "_", value)
+    value = re.sub(r"[^a-z0-9_]+", "", value)
+    return value
+
+
 def _resolve_disease_csv_path(disease_key: str) -> Path | None:
     token = _normalize_token(disease_key)
     aliases = DISEASE_FILE_ALIASES.get(token, [token])
@@ -62,6 +69,8 @@ def _parse_number(raw: str) -> float | None:
     text = str(raw or "").strip()
     if not text:
         return None
+    if text in {"-", "--", "...", ".", ".."}:
+        return None
     text = text.replace("%", "").replace(" ", "")
     text = text.replace(".", "").replace(",", ".") if text.count(",") == 1 and text.count(".") > 1 else text
     text = text.replace(",", ".")
@@ -69,6 +78,32 @@ def _parse_number(raw: str) -> float | None:
         return float(text)
     except ValueError:
         return None
+
+
+def _decode_text(raw_bytes: bytes) -> str:
+    for encoding in ("utf-8-sig", "latin-1", "cp1252"):
+        try:
+            return raw_bytes.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw_bytes.decode("utf-8", errors="ignore")
+
+
+def _find_header_index(lines: list[str]) -> int | None:
+    for idx, line in enumerate(lines):
+        if ";" not in line:
+            continue
+        normalized = _normalize_header(line)
+        if "municipio" in normalized and "total" in normalized:
+            return idx
+    return None
+
+
+def _clean_municipio_name(raw_name: str) -> str:
+    value = str(raw_name or "").strip().strip('"')
+    value = re.sub(r"^\d{6}\s+", "", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
 
 
 def _load_disease_csv(disease_key: str) -> tuple[dict[str, float], Path] | tuple[None, None]:
@@ -92,21 +127,57 @@ def _load_disease_csv(disease_key: str) -> tuple[dict[str, float], Path] | tuple
         "score",
         "taxa",
         "total",
+        "total_",
         "value",
     ]
 
     values: dict[str, float] = {}
-    with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            municipio = _row_value(row, municipality_keys)
-            if not municipio:
-                continue
-            raw = _row_value(row, value_keys)
-            num = _parse_number(raw)
-            if num is None:
-                continue
-            values[municipio] = num
+    raw_bytes = csv_path.read_bytes()
+    content = _decode_text(raw_bytes)
+    lines = [line for line in content.splitlines() if line.strip()]
+    header_idx = _find_header_index(lines)
+    if header_idx is None:
+        return values, csv_path
+
+    data_text = "\n".join(lines[header_idx:])
+    reader = csv.reader(io.StringIO(data_text), delimiter=";")
+    rows = list(reader)
+    if not rows:
+        return values, csv_path
+
+    headers = [str(col).strip().strip('"') for col in rows[0]]
+    normalized_headers = [_normalize_header(col) for col in headers]
+
+    municipio_idx = None
+    for idx, token in enumerate(normalized_headers):
+        if any(key in token for key in municipality_keys):
+            municipio_idx = idx
+            break
+
+    value_idx = None
+    for idx, token in enumerate(normalized_headers):
+        if token in value_keys or token.startswith("total"):
+            value_idx = idx
+            break
+
+    if municipio_idx is None or value_idx is None:
+        return values, csv_path
+
+    for raw_row in rows[1:]:
+        if len(raw_row) <= max(municipio_idx, value_idx):
+            continue
+
+        municipio = _clean_municipio_name(raw_row[municipio_idx])
+        if not municipio:
+            continue
+        if _normalize_header(municipio) == "total":
+            continue
+
+        num = _parse_number(raw_row[value_idx])
+        if num is None:
+            continue
+
+        values[municipio] = num
 
     return values, csv_path
 
