@@ -783,6 +783,47 @@
         font-size: 12px;
         min-height: 16px;
       }
+            .legend-control {
+              background: rgba(33, 17, 58, 0.9) !important;
+              border: 1px solid rgba(235, 216, 255, 0.3) !important;
+              border-radius: 8px !important;
+              padding: 14px !important;
+              box-shadow: 0 4px 12px rgba(15, 6, 26, 0.4) !important;
+              font-size: 12px !important;
+              color: #f9f2ff !important;
+              max-width: 280px !important;
+            }
+
+            .legend-control h4 {
+              margin: 0 0 10px 0 !important;
+              font-size: 13px !important;
+              font-weight: 700 !important;
+              color: #f3c4ff !important;
+            }
+
+            .legend-item {
+              display: flex !important;
+              align-items: center !important;
+              margin-bottom: 8px !important;
+              gap: 8px !important;
+            }
+
+            .legend-item:last-child {
+              margin-bottom: 0 !important;
+            }
+
+            .legend-color {
+              width: 24px !important;
+              height: 14px !important;
+              border-radius: 2px !important;
+              flex-shrink: 0 !important;
+              border: 1px solid rgba(255, 255, 255, 0.3) !important;
+            }
+
+            .legend-label {
+              font-size: 11px !important;
+              color: #eef5fb !important;
+            }
 
       @media (max-width: 1000px) {
         .hero,
@@ -1167,6 +1208,7 @@
       let selectedDemoMode = "overlay";
       let mapReadyPromise = null;
 
+  let legendControl = null;
       const aggravoBaseScore = {
         "Sindrome Congenita da Zika": 92,
         "Covid 19": 84,
@@ -1250,6 +1292,7 @@
         }
       }
 
+  clearLegend();
       function clearMunicipioLayer() {
         if (municipioLayer && map) {
           map.removeLayer(municipioLayer);
@@ -1318,6 +1361,96 @@
           }
           return null;
         }
+              function clearLegend() {
+                if (legendControl && map) {
+                  map.removeControl(legendControl);
+                  legendControl = null;
+                }
+              }
+
+              function addClimateLegend() {
+                clearLegend();
+                const legend = L.control({ position: "bottomright" });
+                legend.onAdd = function (map) {
+                  const div = L.DomUtil.create("div", "legend-control");
+                  div.innerHTML = "<h4>Mapa Climático</h4>";
+                  const colors = {
+                    Precipitacao: "#4d87d7",
+                    Temperatura: "#d67152",
+                    Queimadas: "#d35d4f",
+                    "Cobertura vegetal": "#5ca872"
+                  };
+                  Object.entries(colors).forEach(([name, color]) => {
+                    const item = document.createElement("div");
+                    item.className = "legend-item";
+                    item.innerHTML = '<div class="legend-color" style="background-color: ' + color + ';"></div><span class="legend-label">' + name + '</span>';
+                    div.appendChild(item);
+                  });
+                  div.innerHTML += "<p style='margin: 10px 0 0 0; padding-top: 10px; border-top: 1px solid rgba(235, 216, 255, 0.2); font-size: 10px; color: #d4b8ff;'>Variáveis climáticas: ' + Array.from(selectedClimates).join(", ") + '</p>";
+                  return div;
+                };
+                legendControl = legend.addTo(map);
+              }
+
+              function addDiseaseLegend() {
+                clearLegend();
+                const legend = L.control({ position: "bottomright" });
+                legend.onAdd = function (map) {
+                  const div = L.DomUtil.create("div", "legend-control");
+                  div.innerHTML = "<h4>Mapa de Saúde (Agravos)</h4>";
+                  const diseases = {
+                    "Sindrome Congenita da Zika": "#7c4bba",
+                    "Covid 19": "#6c52d2",
+                    Dengue: "#8d4dbf",
+                    Esquistossomose: "#7a56c9",
+                    Tuberculose: "#6b47af",
+                    Monkeypox: "#905ecf",
+                    Chikungunya: "#7f4ec5",
+                    "Febre Oropouche": "#8a5bd3"
+                  };
+                  Object.entries(diseases).forEach(([name, color]) => {
+                    const item = document.createElement("div");
+                    item.className = "legend-item";
+                    item.innerHTML = '<div class="legend-color" style="background-color: ' + color + ';"></div><span class="legend-label">' + name + '</span>';
+                    div.appendChild(item);
+                  });
+                  div.innerHTML += "<p style='margin: 10px 0 0 0; padding-top: 10px; border-top: 1px solid rgba(235, 216, 255, 0.2); font-size: 10px; color: #d4b8ff;'>Agravo selecionado: <strong>" + selectedDisease.name + "</strong></p>";
+                  return div;
+                };
+                legendControl = legend.addTo(map);
+              }
+
+              function addSociodemographicLegend(min, max) {
+                clearLegend();
+                const legend = L.control({ position: "bottomright" });
+                legend.onAdd = function (map) {
+                  const div = L.DomUtil.create("div", "legend-control");
+                  const meta = socioMetadata[selectedSocioVariable];
+                  div.innerHTML = "<h4>Mapa Sociodemográfico</h4>";
+                  div.innerHTML += "<p style='margin: 0 0 8px 0; font-size: 11px; color: #eef5fb;'><strong>" + meta.label + "</strong> (" + selectedSocioScope.toUpperCase() + ")</p>";
+          
+                  const steps = 5;
+                  const range = max - min;
+                  for (let i = 0; i < steps; i++) {
+                    const value = min + (range / steps) * i;
+                    const ratio = range === 0 ? 0 : (value - min) / range;
+                    const color = socioColorScale(value, min, max);
+                    const item = document.createElement("div");
+                    item.className = "legend-item";
+                    item.innerHTML = '<div class="legend-color" style="background-color: ' + color + ';"></div><span class="legend-label">' + value.toFixed(2) + ' ' + meta.unit + '</span>';
+                    div.appendChild(item);
+                  }
+          
+                  const maxItem = document.createElement("div");
+                  maxItem.className = "legend-item";
+                  const maxColor = socioColorScale(max, min, max);
+                  maxItem.innerHTML = '<div class="legend-color" style="background-color: ' + maxColor + ';"></div><span class="legend-label"><strong>' + max.toFixed(2) + ' ' + meta.unit + '</strong></span>';
+                  div.appendChild(maxItem);
+          
+                  return div;
+                };
+                legendControl = legend.addTo(map);
+              }
 
         if (node && typeof node === "object") {
           if (typeof node.V === "string") {
@@ -1960,6 +2093,11 @@
         overlayLayer = L.geoJSON(base, { style }).addTo(map);
         fitOverlayBounds(overlayLayer);
 
+        if (category === "saude") {
+          addDiseaseLegend();
+        } else if (category === "climatico") {
+          addClimateLegend();
+        }
         currentMapGeoJson = {
           type: "FeatureCollection",
           features: base.features.map((feature) => ({
@@ -2064,6 +2202,7 @@
         overlayLayer = featureGroup;
         fitOverlayBounds(featureGroup);
 
+  addSociodemographicLegend(min, max);
         const meta = socioMetadata[selectedSocioVariable];
         currentMapGeoJson = {
           type: "FeatureCollection",
