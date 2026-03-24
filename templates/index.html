@@ -596,7 +596,7 @@
 
       #demoCanvas {
         width: 100%;
-        height: 240px;
+        height: 360px;
         border-radius: 10px;
         background: linear-gradient(160deg, #160a28, #281444);
         border: 1px solid rgba(208, 179, 255, 0.34);
@@ -617,6 +617,16 @@
         display: grid;
         grid-template-columns: 1fr;
         gap: 6px;
+      }
+
+      .demo-actions select {
+        width: 100%;
+        border: 1px solid rgba(228, 204, 255, 0.6);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.14);
+        color: #fff8ff;
+        padding: 9px 10px;
+        font-size: 12px;
       }
 
       @keyframes mapPulse {
@@ -796,7 +806,7 @@
         }
 
         #demoCanvas {
-          height: 220px;
+          height: 300px;
         }
       }
     </style>
@@ -934,12 +944,19 @@
               </div>
               <aside class="demo-panel" aria-label="Demonstrador de sobreposição em imagem">
                 <p class="demo-title">Demonstrador em Imagem (tempo real)</p>
-                <canvas id="demoCanvas" width="560" height="360"></canvas>
+                <canvas id="demoCanvas" width="960" height="620"></canvas>
                 <div class="demo-meta" id="demoMeta">
                   <span><strong>Status:</strong> aguardando geração de camada</span>
                 </div>
                 <div class="demo-actions">
-                  <button class="secondary" id="downloadDemoImageBtn">Baixar imagem demonstrador</button>
+                  <select id="analysisModeSelect" aria-label="Método de análise espacial">
+                    <option value="overlay">Sobreposição multivariada</option>
+                    <option value="heat">Mapa de calor</option>
+                    <option value="kernel">Kernel</option>
+                    <option value="density">Densidade</option>
+                    <option value="moran">Moran local</option>
+                  </select>
+                  <button class="secondary" id="downloadDemoImageBtn">Baixar imagem demonstrador (HD)</button>
                 </div>
               </aside>
             </div>
@@ -1034,6 +1051,7 @@
       const mapCard = document.getElementById("mapCard");
       const demoCanvas = document.getElementById("demoCanvas");
       const demoMeta = document.getElementById("demoMeta");
+      const analysisModeSelect = document.getElementById("analysisModeSelect");
       const downloadDemoImageBtn = document.getElementById("downloadDemoImageBtn");
 
       const geresMunicipios = {
@@ -1145,6 +1163,8 @@
       let socioMunicipioValues = new Map();
       let currentMapGeoJson = null;
       let lastDemoImageDataUrl = "";
+      let lastDemoLabel = "camada inicial";
+      let selectedDemoMode = "overlay";
       let mapReadyPromise = null;
 
       const aggravoBaseScore = {
@@ -1507,30 +1527,20 @@
         }
       }
 
-      function renderDemonstratorImage(label) {
-        const featureCollection = currentMapGeoJson || getCurrentBaseFeatureCollection();
-        if (!featureCollection || !featureCollection.features || featureCollection.features.length === 0) {
-          demoMeta.innerHTML = "<span><strong>Status:</strong> sem geometrias para demonstrar</span>";
-          return;
-        }
+      function clamp01(value) {
+        return Math.max(0, Math.min(1, value));
+      }
 
-        const ctx = demoCanvas.getContext("2d");
-        const width = demoCanvas.width;
-        const height = demoCanvas.height;
+      function distance2d(a, b) {
+        const dx = a[0] - b[0];
+        const dy = a[1] - b[1];
+        return Math.sqrt(dx * dx + dy * dy);
+      }
 
-        ctx.clearRect(0, 0, width, height);
-        const bg = ctx.createLinearGradient(0, 0, width, height);
-        bg.addColorStop(0, "#170d2d");
-        bg.addColorStop(1, "#2a1650");
-        ctx.fillStyle = bg;
-        ctx.fillRect(0, 0, width, height);
-
-        drawClimatePatterns(ctx, width, height);
-
+      function buildProjectedSpatialData(featureCollection, width, height) {
         const allPoints = featureCollection.features.flatMap((feature) => flattenCoordinates(feature.geometry));
         if (allPoints.length === 0) {
-          demoMeta.innerHTML = "<span><strong>Status:</strong> geometria invalida para desenho</span>";
-          return;
+          return null;
         }
 
         let minX = Infinity;
@@ -1551,30 +1561,61 @@
         const scale = Math.min((width - pad * 2) / geoW, (height - pad * 2) / geoH);
         const offsetX = (width - geoW * scale) / 2;
         const offsetY = (height - geoH * scale) / 2;
+
         const project = (coord) => [
           offsetX + (coord[0] - minX) * scale,
           height - (offsetY + (coord[1] - minY) * scale)
         ];
 
+        const socioValues = Array.from(socioMunicipioValues.values()).map((item) => item.value).filter((value) => Number.isFinite(value));
+        const socioMean = socioValues.length > 0 ? socioValues.reduce((acc, n) => acc + n, 0) / socioValues.length : 55;
+        const socioNormBase = clamp01((socioMean % 100) / 100);
+        const diseaseBase = clamp01((aggravoBaseScore[selectedDisease.name] || 70) / 100);
+        const climateBase = clamp01(Array.from(selectedClimates).reduce((acc, climate) => acc + (climateWeight[climate] || 0), 0) / 100);
+
+        const features = featureCollection.features.map((feature, idx) => {
+          const rings = polygonRings(feature.geometry).map((ring) => ring.map(project));
+          const pts = flattenCoordinates(feature.geometry);
+          const centroidGeo = pts.length > 0
+            ? pts.reduce((acc, p) => [acc[0] + p[0], acc[1] + p[1]], [0, 0]).map((v) => v / pts.length)
+            : [minX, minY];
+          const centroid = project(centroidGeo);
+          const noise = ((idx * 37 + 13) % 100) / 100;
+
+          const diseaseIntensity = clamp01(diseaseBase * 0.63 + socioNormBase * 0.22 + noise * 0.15);
+          const climateIntensity = clamp01(climateBase * 0.68 + (1 - socioNormBase) * 0.2 + (1 - noise) * 0.12);
+          const combinedIntensity = clamp01(diseaseIntensity * 0.58 + climateIntensity * 0.42);
+
+          return {
+            rings,
+            centroid,
+            diseaseIntensity,
+            climateIntensity,
+            combinedIntensity
+          };
+        });
+
+        return { features };
+      }
+
+      function drawBasePolygons(ctx, projected) {
         const diseaseColor = diseaseOverlayColor[selectedDisease.name] || "#8a58cd";
         ctx.fillStyle = diseaseColor;
-        ctx.globalAlpha = 0.46;
-        ctx.strokeStyle = "rgba(246, 233, 255, 0.95)";
+        ctx.globalAlpha = 0.22;
+        ctx.strokeStyle = "rgba(246, 233, 255, 0.92)";
         ctx.lineWidth = 1.2;
 
-        featureCollection.features.forEach((feature) => {
-          const rings = polygonRings(feature.geometry);
-          rings.forEach((ring) => {
-            if (!Array.isArray(ring) || ring.length === 0) {
+        projected.features.forEach((feature) => {
+          feature.rings.forEach((ring) => {
+            if (!ring || ring.length === 0) {
               return;
             }
             ctx.beginPath();
             ring.forEach((coord, idx) => {
-              const [x, y] = project(coord);
               if (idx === 0) {
-                ctx.moveTo(x, y);
+                ctx.moveTo(coord[0], coord[1]);
               } else {
-                ctx.lineTo(x, y);
+                ctx.lineTo(coord[0], coord[1]);
               }
             });
             ctx.closePath();
@@ -1584,24 +1625,283 @@
         });
 
         ctx.globalAlpha = 1;
-        const profile = buildDataProfile();
-        ctx.fillStyle = "rgba(15, 8, 27, 0.74)";
-        ctx.fillRect(8, 8, width - 16, 62);
+      }
+
+      function drawGaussianField(ctx, points, colorStops, radiusPx, alphaScale, getter) {
+        points.forEach((point) => {
+          const intensity = clamp01(getter(point));
+          if (intensity <= 0.01) {
+            return;
+          }
+          const g = ctx.createRadialGradient(point.centroid[0], point.centroid[1], 0, point.centroid[0], point.centroid[1], radiusPx);
+          colorStops.forEach((stop) => {
+            g.addColorStop(stop.offset, stop.color.replace("{a}", String((stop.alpha * intensity * alphaScale).toFixed(3))));
+          });
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(point.centroid[0], point.centroid[1], radiusPx, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      function renderOverlayMode(ctx, projected) {
+        drawBasePolygons(ctx, projected);
+
+        drawGaussianField(
+          ctx,
+          projected.features,
+          [
+            { offset: 0, color: "rgba(255,72,72,{a})", alpha: 0.82 },
+            { offset: 0.55, color: "rgba(255,146,58,{a})", alpha: 0.44 },
+            { offset: 1, color: "rgba(255,146,58,{a})", alpha: 0.0 }
+          ],
+          72,
+          1,
+          (point) => point.diseaseIntensity
+        );
+
+        drawGaussianField(
+          ctx,
+          projected.features,
+          [
+            { offset: 0, color: "rgba(81,160,255,{a})", alpha: 0.5 },
+            { offset: 0.65, color: "rgba(121,214,255,{a})", alpha: 0.25 },
+            { offset: 1, color: "rgba(121,214,255,{a})", alpha: 0.0 }
+          ],
+          44,
+          1,
+          (point) => point.climateIntensity
+        );
+      }
+
+      function renderHeatMode(ctx, projected) {
+        drawBasePolygons(ctx, projected);
+        drawGaussianField(
+          ctx,
+          projected.features,
+          [
+            { offset: 0, color: "rgba(255,46,69,{a})", alpha: 0.9 },
+            { offset: 0.35, color: "rgba(255,132,52,{a})", alpha: 0.72 },
+            { offset: 0.75, color: "rgba(255,226,84,{a})", alpha: 0.48 },
+            { offset: 1, color: "rgba(255,226,84,{a})", alpha: 0.0 }
+          ],
+          90,
+          1,
+          (point) => point.combinedIntensity
+        );
+      }
+
+      function renderKernelMode(ctx, projected) {
+        drawBasePolygons(ctx, projected);
+        const bandwidth = 110;
+        drawGaussianField(
+          ctx,
+          projected.features,
+          [
+            { offset: 0, color: "rgba(232,63,243,{a})", alpha: 0.6 },
+            { offset: 0.6, color: "rgba(130,117,255,{a})", alpha: 0.35 },
+            { offset: 1, color: "rgba(130,117,255,{a})", alpha: 0.0 }
+          ],
+          bandwidth,
+          1,
+          (point) => point.combinedIntensity
+        );
+      }
+
+      function renderDensityMode(ctx, projected, width, height) {
+        drawBasePolygons(ctx, projected);
+        const cols = 12;
+        const rows = 9;
+        const cellW = width / cols;
+        const cellH = height / rows;
+        const radius = Math.max(cellW, cellH) * 1.1;
+        const values = [];
+
+        for (let y = 0; y < rows; y += 1) {
+          for (let x = 0; x < cols; x += 1) {
+            const center = [x * cellW + cellW / 2, y * cellH + cellH / 2];
+            let density = 0;
+            projected.features.forEach((point) => {
+              const d = distance2d(center, point.centroid);
+              const w = Math.max(0, 1 - d / radius);
+              density += w * point.combinedIntensity;
+            });
+            values.push(density);
+          }
+        }
+
+        const max = Math.max(...values, 0.000001);
+        let i = 0;
+        for (let y = 0; y < rows; y += 1) {
+          for (let x = 0; x < cols; x += 1) {
+            const ratio = clamp01(values[i] / max);
+            i += 1;
+            ctx.fillStyle = "rgba(" +
+              Math.round(70 + ratio * 170) + "," +
+              Math.round(80 + (1 - ratio) * 120) + "," +
+              Math.round(210 - ratio * 130) + "," +
+              (0.16 + ratio * 0.56).toFixed(3) +
+              ")";
+            ctx.fillRect(x * cellW, y * cellH, cellW - 1, cellH - 1);
+          }
+        }
+      }
+
+      function nearestNeighbors(points, index, k) {
+        const base = points[index];
+        const distances = points
+          .map((point, idx) => ({ idx, d: idx === index ? Infinity : distance2d(base.centroid, point.centroid) }))
+          .sort((a, b) => a.d - b.d)
+          .slice(0, k)
+          .map((item) => item.idx);
+        return distances;
+      }
+
+      function renderMoranMode(ctx, projected) {
+        drawBasePolygons(ctx, projected);
+        const values = projected.features.map((point) => point.combinedIntensity);
+        const n = values.length;
+        const mean = values.reduce((acc, v) => acc + v, 0) / Math.max(n, 1);
+        const z = values.map((value) => value - mean);
+        const variance = z.reduce((acc, v) => acc + v * v, 0) / Math.max(n, 1);
+        const std = Math.sqrt(Math.max(variance, 1e-8));
+        const zStd = z.map((v) => v / std);
+
+        const classes = { HH: 0, LL: 0, HL: 0, LH: 0 };
+        let localIAccum = 0;
+
+        projected.features.forEach((point, idx) => {
+          const neighbors = nearestNeighbors(projected.features, idx, Math.min(4, Math.max(1, n - 1)));
+          const neighMean = neighbors.reduce((acc, nIdx) => acc + zStd[nIdx], 0) / Math.max(neighbors.length, 1);
+          const localI = zStd[idx] * neighMean;
+          localIAccum += localI;
+
+          let cls = "HH";
+          if (zStd[idx] >= 0 && neighMean >= 0) cls = "HH";
+          if (zStd[idx] < 0 && neighMean < 0) cls = "LL";
+          if (zStd[idx] >= 0 && neighMean < 0) cls = "HL";
+          if (zStd[idx] < 0 && neighMean >= 0) cls = "LH";
+          classes[cls] += 1;
+
+          const palette = {
+            HH: "rgba(255,70,70,0.86)",
+            LL: "rgba(70,153,255,0.82)",
+            HL: "rgba(255,195,84,0.86)",
+            LH: "rgba(107,224,169,0.86)"
+          };
+          ctx.fillStyle = palette[cls];
+          ctx.beginPath();
+          ctx.arc(point.centroid[0], point.centroid[1], 7 + Math.abs(localI) * 8, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        return {
+          localMoranMean: localIAccum / Math.max(n, 1),
+          classes
+        };
+      }
+
+      function describeMode(mode) {
+        const labels = {
+          overlay: "Sobreposição multivariada",
+          heat: "Mapa de calor",
+          kernel: "Kernel",
+          density: "Densidade",
+          moran: "Moran local"
+        };
+        return labels[mode] || labels.overlay;
+      }
+
+      function renderDemonstratorImage(label, options = {}) {
+        lastDemoLabel = label;
+        const featureCollection = currentMapGeoJson || getCurrentBaseFeatureCollection();
+        if (!featureCollection || !featureCollection.features || featureCollection.features.length === 0) {
+          if (!options.skipMeta) {
+            demoMeta.innerHTML = "<span><strong>Status:</strong> sem geometrias para demonstrar</span>";
+          }
+          return;
+        }
+
+        const canvas = options.targetCanvas || demoCanvas;
+        const ctx = canvas.getContext("2d");
+        const width = canvas.width;
+        const height = canvas.height;
+        const mode = options.mode || selectedDemoMode;
+
+        ctx.clearRect(0, 0, width, height);
+        const bg = ctx.createLinearGradient(0, 0, width, height);
+        bg.addColorStop(0, "#170d2d");
+        bg.addColorStop(1, "#2a1650");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, width, height);
+
+        drawClimatePatterns(ctx, width, height);
+
+        const projected = buildProjectedSpatialData(featureCollection, width, height);
+        if (!projected) {
+          if (!options.skipMeta) {
+            demoMeta.innerHTML = "<span><strong>Status:</strong> geometria invalida para desenho</span>";
+          }
+          return;
+        }
+
+        let moranInfo = null;
+        if (mode === "heat") {
+          renderHeatMode(ctx, projected);
+        } else if (mode === "kernel") {
+          renderKernelMode(ctx, projected);
+        } else if (mode === "density") {
+          renderDensityMode(ctx, projected, width, height);
+        } else if (mode === "moran") {
+          moranInfo = renderMoranMode(ctx, projected);
+        } else {
+          renderOverlayMode(ctx, projected);
+        }
+
+        const combined = projected.features.map((item) => item.combinedIntensity);
+        const mean = combined.reduce((acc, value) => acc + value, 0) / Math.max(combined.length, 1);
+        const variance = combined.reduce((acc, value) => acc + (value - mean) ** 2, 0) / Math.max(combined.length, 1);
+        const std = Math.sqrt(variance);
+        const max = Math.max(...combined, 0);
+        const min = Math.min(...combined, 0);
+
+        ctx.fillStyle = "rgba(15, 8, 27, 0.79)";
+        ctx.fillRect(10, 10, width - 20, 74);
         ctx.fillStyle = "#e9ddff";
-        ctx.font = "bold 14px Trebuchet MS";
-        ctx.fillText("Demonstrador de sobreposição - " + label, 14, 30);
+        ctx.font = "bold 16px Trebuchet MS";
+        ctx.fillText("Demonstrador - " + describeMode(mode), 16, 33);
         ctx.font = "12px Trebuchet MS";
-        ctx.fillText("Agravos: " + selectedDisease.name + " | Clima: " + (Array.from(selectedClimates).join(", ") || "nenhuma"), 14, 50);
-        ctx.fillText("Demografia: " + socioMetadata[selectedSocioVariable].label + " (" + selectedSocioScope + ")", 14, 66);
+        ctx.fillText("Agravos: " + selectedDisease.name + " | Clima: " + (Array.from(selectedClimates).join(", ") || "nenhuma"), 16, 52);
+        ctx.fillText("Demografia: " + socioMetadata[selectedSocioVariable].label + " (" + selectedSocioScope + ")", 16, 69);
 
-        lastDemoImageDataUrl = demoCanvas.toDataURL("image/png");
+        lastDemoImageDataUrl = canvas.toDataURL("image/png");
 
-        demoMeta.innerHTML =
-          "<span><strong>Atualização:</strong> " + profile.stamp + "</span>" +
-          "<span><strong>Índice climático:</strong> " + profile.climaticScore + "</span>" +
-          "<span><strong>Índice demográfico:</strong> " + profile.demographicScore + "</span>" +
-          "<span><strong>Índice de agravos:</strong> " + profile.aggravoScore + "</span>" +
-          "<span><strong>Risco integrado:</strong> " + profile.integratedScore + "</span>";
+        if (!options.skipMeta) {
+          const profile = buildDataProfile();
+          const precisionInfo =
+            "<span><strong>Unidades espaciais:</strong> " + combined.length + "</span>" +
+            "<span><strong>Média intensidade:</strong> " + mean.toFixed(3) + " | DP: " + std.toFixed(3) + "</span>" +
+            "<span><strong>Faixa:</strong> " + min.toFixed(3) + " - " + max.toFixed(3) + "</span>" +
+            "<span><strong>Método:</strong> " + describeMode(mode) + "</span>";
+
+          const moranExtra = moranInfo
+            ? "<span><strong>Moran local médio:</strong> " + moranInfo.localMoranMean.toFixed(4) +
+              " | HH " + moranInfo.classes.HH +
+              " LL " + moranInfo.classes.LL +
+              " HL " + moranInfo.classes.HL +
+              " LH " + moranInfo.classes.LH +
+              "</span>"
+            : "";
+
+          demoMeta.innerHTML =
+            "<span><strong>Atualização:</strong> " + profile.stamp + "</span>" +
+            "<span><strong>Índice climático:</strong> " + profile.climaticScore + "</span>" +
+            "<span><strong>Índice demográfico:</strong> " + profile.demographicScore + "</span>" +
+            "<span><strong>Índice de agravos:</strong> " + profile.aggravoScore + "</span>" +
+            "<span><strong>Risco integrado:</strong> " + profile.integratedScore + "</span>" +
+            precisionInfo +
+            moranExtra;
+        }
       }
 
       function getCurrentBaseFeatureCollection() {
@@ -2280,14 +2580,31 @@
       cancelAuthBtn.addEventListener("click", closeAuthModal);
       confirmAuthBtn.addEventListener("click", runRestrictedAction);
 
+      analysisModeSelect.addEventListener("change", () => {
+        selectedDemoMode = analysisModeSelect.value;
+        if (currentMapGeoJson || getCurrentBaseFeatureCollection()) {
+          renderDemonstratorImage(lastDemoLabel || "modo analítico");
+        }
+      });
+
       downloadDemoImageBtn.addEventListener("click", () => {
-        if (!lastDemoImageDataUrl) {
+        if (!currentMapGeoJson && !getCurrentBaseFeatureCollection()) {
           updateRobotMessage("Gere uma camada no mapa para criar a imagem do demonstrador.");
           return;
         }
+
+        const hdCanvas = document.createElement("canvas");
+        hdCanvas.width = 1600;
+        hdCanvas.height = 1080;
+        renderDemonstratorImage(lastDemoLabel || "analise", {
+          targetCanvas: hdCanvas,
+          mode: selectedDemoMode,
+          skipMeta: true
+        });
+
         const anchor = document.createElement("a");
-        anchor.href = lastDemoImageDataUrl;
-        anchor.download = "demonstrador_epigeodata.png";
+        anchor.href = hdCanvas.toDataURL("image/png");
+        anchor.download = "demonstrador_epigeodata_hd.png";
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();
