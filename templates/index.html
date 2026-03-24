@@ -530,6 +530,13 @@
 
       .map-shell {
         margin-top: 12px;
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 10px;
+        align-items: stretch;
+      }
+
+      .map-main {
         position: relative;
       }
 
@@ -568,6 +575,48 @@
 
       .map-loading.hidden {
         display: none;
+      }
+
+      .demo-panel {
+        border: 1px solid rgba(225, 198, 255, 0.44);
+        border-radius: 14px;
+        background: rgba(22, 11, 38, 0.68);
+        padding: 10px;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 8px;
+      }
+
+      .demo-title {
+        margin: 0;
+        font-size: 12px;
+        color: #f0ddff;
+        letter-spacing: 0.4px;
+      }
+
+      #demoCanvas {
+        width: 100%;
+        height: 240px;
+        border-radius: 10px;
+        background: linear-gradient(160deg, #160a28, #281444);
+        border: 1px solid rgba(208, 179, 255, 0.34);
+      }
+
+      .demo-meta {
+        display: grid;
+        gap: 5px;
+        font-size: 11px;
+        color: #ead8ff;
+      }
+
+      .demo-meta strong {
+        color: #c4f6ff;
+      }
+
+      .demo-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 6px;
       }
 
       @keyframes mapPulse {
@@ -738,8 +787,16 @@
           grid-template-columns: 1fr;
         }
 
+        .map-shell {
+          grid-template-columns: 1fr;
+        }
+
         #map {
           height: 280px;
+        }
+
+        #demoCanvas {
+          height: 220px;
         }
       }
     </style>
@@ -778,7 +835,7 @@
             <div class="chip-grid" id="diseaseButtons">
               <button class="chip active" data-type="doenca" data-name="Sindrome Congenita da Zika" data-agent="Virus Zika" data-note="Agravos neurologicos e malformacoes congenitas em recem-nascidos.">
                 <div class="icon">🧠</div>
-                <div class="chip-content"><strong>Zika</strong><span>Virus Zika</span></div>
+                <div class="chip-content"><strong>Sindrome Congenita da Zika</strong><span>Virus Zika</span></div>
               </button>
               <button class="chip" data-type="doenca" data-name="Covid 19" data-agent="SARS-CoV-2" data-note="Agravos respiratorios agudos e complicacoes sistemicas.">
                 <div class="icon">🫁</div>
@@ -789,11 +846,11 @@
                 <div class="chip-content"><strong>Dengue</strong><span>DENV 1-4</span></div>
               </button>
               <button class="chip" data-type="doenca" data-name="Esquistossomose" data-agent="Schistosoma mansoni" data-note="Agravos hepatointestinais associados a exposicao hidrica.">
-                <div class="icon">🌊</div>
+                <div class="icon">🐌</div>
                 <div class="chip-content"><strong>Esquistossomose</strong><span>S. mansoni</span></div>
               </button>
               <button class="chip" data-type="doenca" data-name="Tuberculose" data-agent="Mycobacterium tuberculosis" data-note="Agravos pulmonares persistentes e transmissao comunitaria.">
-                <div class="icon">🫂</div>
+                <div class="icon">🧫</div>
                 <div class="chip-content"><strong>Tuberculose</strong><span>M. tuberculosis</span></div>
               </button>
               <button class="chip" data-type="doenca" data-name="Monkeypox" data-agent="Virus mpox" data-note="Agravos dermatologicos e sindromes febris.">
@@ -871,8 +928,20 @@
               <label>Municipio<select id="municipioSelect"><option value="">Todos os municipios</option></select></label>
             </div>
             <div class="map-shell">
-              <div id="map" aria-label="Mapa de Pernambuco por GERES e municipio"></div>
-              <div class="map-loading" id="mapLoading">Carregando mapa em segundo plano...</div>
+              <div class="map-main">
+                <div id="map" aria-label="Mapa de Pernambuco por GERES e municipio"></div>
+                <div class="map-loading" id="mapLoading">Carregando mapa em segundo plano...</div>
+              </div>
+              <aside class="demo-panel" aria-label="Demonstrador de sobreposição em imagem">
+                <p class="demo-title">Demonstrador em Imagem (tempo real)</p>
+                <canvas id="demoCanvas" width="560" height="360"></canvas>
+                <div class="demo-meta" id="demoMeta">
+                  <span><strong>Status:</strong> aguardando geração de camada</span>
+                </div>
+                <div class="demo-actions">
+                  <button class="secondary" id="downloadDemoImageBtn">Baixar imagem demonstrador</button>
+                </div>
+              </aside>
             </div>
             <div class="panel-actions">
               <button class="primary" id="generateOverlayBtn">Gerar mapa sobreposto</button>
@@ -963,6 +1032,9 @@
       const techRobot = document.getElementById("techRobot");
       const mapLoading = document.getElementById("mapLoading");
       const mapCard = document.getElementById("mapCard");
+      const demoCanvas = document.getElementById("demoCanvas");
+      const demoMeta = document.getElementById("demoMeta");
+      const downloadDemoImageBtn = document.getElementById("downloadDemoImageBtn");
 
       const geresMunicipios = {
         "I GERES": ["Recife", "Moreno", "Jaboatão dos Guararapes", "Paulista", "Camaragibe", "Cabo de Santo Agostinho", "Olinda", "Igarassu", "Abreu e Lima", "Fernando de Noronha", "Glória do Goitá", "Ilha de Itamaracá"],
@@ -1072,7 +1144,26 @@
       const socioValueCache = new Map();
       let socioMunicipioValues = new Map();
       let currentMapGeoJson = null;
+      let lastDemoImageDataUrl = "";
       let mapReadyPromise = null;
+
+      const aggravoBaseScore = {
+        "Sindrome Congenita da Zika": 92,
+        "Covid 19": 84,
+        Dengue: 78,
+        Esquistossomose: 65,
+        Tuberculose: 74,
+        Monkeypox: 58,
+        Chikungunya: 71,
+        "Febre Oropouche": 69
+      };
+
+      const climateWeight = {
+        Precipitacao: 26,
+        Temperatura: 24,
+        Queimadas: 28,
+        "Cobertura vegetal": 22
+      };
 
       function setMapLoading(message, visible) {
         mapLoading.textContent = message;
@@ -1311,6 +1402,208 @@
         return { type: "FeatureCollection", features: [] };
       }
 
+      function flattenCoordinates(geometry) {
+        const points = [];
+        if (!geometry || !geometry.coordinates) {
+          return points;
+        }
+
+        const consume = (coords) => {
+          if (!Array.isArray(coords)) {
+            return;
+          }
+          if (typeof coords[0] === "number" && typeof coords[1] === "number") {
+            points.push(coords);
+            return;
+          }
+          coords.forEach(consume);
+        };
+
+        consume(geometry.coordinates);
+        return points;
+      }
+
+      function polygonRings(geometry) {
+        if (!geometry || !geometry.coordinates) {
+          return [];
+        }
+        if (geometry.type === "Polygon") {
+          return geometry.coordinates;
+        }
+        if (geometry.type === "MultiPolygon") {
+          return geometry.coordinates.flat();
+        }
+        return [];
+      }
+
+      function buildDataProfile() {
+        const now = new Date();
+        const hourFactor = 0.85 + (Math.sin((now.getHours() / 24) * Math.PI * 2) + 1) * 0.075;
+
+        const climaticRaw = Array.from(selectedClimates).reduce((acc, climate) => acc + (climateWeight[climate] || 0), 0);
+        const climaticScore = Math.round(Math.min(100, climaticRaw * hourFactor));
+
+        const aggravoScore = aggravoBaseScore[selectedDisease.name] || 70;
+
+        let demographicScore = 56;
+        const vals = Array.from(socioMunicipioValues.values()).map((item) => item.value).filter((value) => Number.isFinite(value));
+        if (vals.length > 0) {
+          const avg = vals.reduce((acc, n) => acc + n, 0) / vals.length;
+          demographicScore = Math.max(40, Math.min(99, Math.round((avg % 100) || 56)));
+        } else if (activeGeres !== "ALL") {
+          demographicScore = Math.min(95, 58 + (geresMunicipios[activeGeres] || []).length);
+        }
+
+        const integratedScore = Math.round(climaticScore * 0.34 + aggravoScore * 0.41 + demographicScore * 0.25);
+        return { climaticScore, aggravoScore, demographicScore, integratedScore, stamp: now.toLocaleString("pt-BR") };
+      }
+
+      function drawClimatePatterns(ctx, width, height) {
+        if (selectedClimates.has("Precipitacao")) {
+          ctx.strokeStyle = "rgba(112, 188, 255, 0.35)";
+          ctx.lineWidth = 1;
+          for (let i = 0; i < width; i += 14) {
+            ctx.beginPath();
+            ctx.moveTo(i, 0);
+            ctx.lineTo(i - 22, height);
+            ctx.stroke();
+          }
+        }
+
+        if (selectedClimates.has("Temperatura")) {
+          ctx.fillStyle = "rgba(255, 169, 126, 0.18)";
+          for (let i = 0; i < 28; i += 1) {
+            const x = (i * 37) % width;
+            const y = (i * 57) % height;
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        if (selectedClimates.has("Queimadas")) {
+          ctx.fillStyle = "rgba(255, 96, 81, 0.2)";
+          for (let i = 0; i < 18; i += 1) {
+            const x = (i * 63) % width;
+            const y = (i * 41) % height;
+            ctx.beginPath();
+            ctx.moveTo(x, y - 7);
+            ctx.lineTo(x + 6, y + 6);
+            ctx.lineTo(x - 6, y + 6);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+
+        if (selectedClimates.has("Cobertura vegetal")) {
+          ctx.strokeStyle = "rgba(130, 224, 144, 0.2)";
+          ctx.lineWidth = 2;
+          for (let y = 10; y < height; y += 18) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.bezierCurveTo(width * 0.25, y - 6, width * 0.5, y + 8, width, y - 2);
+            ctx.stroke();
+          }
+        }
+      }
+
+      function renderDemonstratorImage(label) {
+        const featureCollection = currentMapGeoJson || getCurrentBaseFeatureCollection();
+        if (!featureCollection || !featureCollection.features || featureCollection.features.length === 0) {
+          demoMeta.innerHTML = "<span><strong>Status:</strong> sem geometrias para demonstrar</span>";
+          return;
+        }
+
+        const ctx = demoCanvas.getContext("2d");
+        const width = demoCanvas.width;
+        const height = demoCanvas.height;
+
+        ctx.clearRect(0, 0, width, height);
+        const bg = ctx.createLinearGradient(0, 0, width, height);
+        bg.addColorStop(0, "#170d2d");
+        bg.addColorStop(1, "#2a1650");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, width, height);
+
+        drawClimatePatterns(ctx, width, height);
+
+        const allPoints = featureCollection.features.flatMap((feature) => flattenCoordinates(feature.geometry));
+        if (allPoints.length === 0) {
+          demoMeta.innerHTML = "<span><strong>Status:</strong> geometria invalida para desenho</span>";
+          return;
+        }
+
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+
+        allPoints.forEach(([x, y]) => {
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        });
+
+        const pad = 24;
+        const geoW = Math.max(0.000001, maxX - minX);
+        const geoH = Math.max(0.000001, maxY - minY);
+        const scale = Math.min((width - pad * 2) / geoW, (height - pad * 2) / geoH);
+        const offsetX = (width - geoW * scale) / 2;
+        const offsetY = (height - geoH * scale) / 2;
+        const project = (coord) => [
+          offsetX + (coord[0] - minX) * scale,
+          height - (offsetY + (coord[1] - minY) * scale)
+        ];
+
+        const diseaseColor = diseaseOverlayColor[selectedDisease.name] || "#8a58cd";
+        ctx.fillStyle = diseaseColor;
+        ctx.globalAlpha = 0.46;
+        ctx.strokeStyle = "rgba(246, 233, 255, 0.95)";
+        ctx.lineWidth = 1.2;
+
+        featureCollection.features.forEach((feature) => {
+          const rings = polygonRings(feature.geometry);
+          rings.forEach((ring) => {
+            if (!Array.isArray(ring) || ring.length === 0) {
+              return;
+            }
+            ctx.beginPath();
+            ring.forEach((coord, idx) => {
+              const [x, y] = project(coord);
+              if (idx === 0) {
+                ctx.moveTo(x, y);
+              } else {
+                ctx.lineTo(x, y);
+              }
+            });
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+          });
+        });
+
+        ctx.globalAlpha = 1;
+        const profile = buildDataProfile();
+        ctx.fillStyle = "rgba(15, 8, 27, 0.74)";
+        ctx.fillRect(8, 8, width - 16, 62);
+        ctx.fillStyle = "#e9ddff";
+        ctx.font = "bold 14px Trebuchet MS";
+        ctx.fillText("Demonstrador de sobreposição - " + label, 14, 30);
+        ctx.font = "12px Trebuchet MS";
+        ctx.fillText("Agravos: " + selectedDisease.name + " | Clima: " + (Array.from(selectedClimates).join(", ") || "nenhuma"), 14, 50);
+        ctx.fillText("Demografia: " + socioMetadata[selectedSocioVariable].label + " (" + selectedSocioScope + ")", 14, 66);
+
+        lastDemoImageDataUrl = demoCanvas.toDataURL("image/png");
+
+        demoMeta.innerHTML =
+          "<span><strong>Atualização:</strong> " + profile.stamp + "</span>" +
+          "<span><strong>Índice climático:</strong> " + profile.climaticScore + "</span>" +
+          "<span><strong>Índice demográfico:</strong> " + profile.demographicScore + "</span>" +
+          "<span><strong>Índice de agravos:</strong> " + profile.aggravoScore + "</span>" +
+          "<span><strong>Risco integrado:</strong> " + profile.integratedScore + "</span>";
+      }
+
       function getCurrentBaseFeatureCollection() {
         if (municipioLayer) {
           return featureCollectionFromGeoJson(municipioLayer.toGeoJSON());
@@ -1383,6 +1676,7 @@
         };
 
         updateRobotMessage("Mapa de <b>" + description + "</b> preparado para download.");
+        renderDemonstratorImage("camada " + description);
         return currentMapGeoJson;
       }
 
@@ -1498,6 +1792,7 @@
             (selectedSocioScope === "geres" ? "nível GERES" : "nível municipal") +
             ")."
         );
+        renderDemonstratorImage("sociodemográfico");
         return currentMapGeoJson;
       }
 
@@ -1594,6 +1889,8 @@
 
         municipioLayer.bindPopup("Municipio selecionado: " + label).openPopup();
         map.fitBounds(municipioLayer.getBounds(), { padding: [22, 22] });
+        currentMapGeoJson = featureCollectionFromGeoJson(municipioLayer.toGeoJSON());
+        renderDemonstratorImage("base municipal");
       }
 
       async function drawGeres(geresName) {
@@ -1649,6 +1946,8 @@
           }
           map.fitBounds(merged, { padding: [22, 22] });
         }
+        currentMapGeoJson = getCurrentBaseFeatureCollection();
+        renderDemonstratorImage("base GERES");
       }
 
       function buildOverlayStyle() {
@@ -1713,6 +2012,7 @@
         }
 
         currentMapGeoJson = getCurrentBaseFeatureCollection();
+        renderDemonstratorImage("sobreposição principal");
 
         animateRobot("bounce");
         robotSmile();
@@ -1979,6 +2279,19 @@
       exportSheetBtn.addEventListener("click", () => openAuthModal("sheet"));
       cancelAuthBtn.addEventListener("click", closeAuthModal);
       confirmAuthBtn.addEventListener("click", runRestrictedAction);
+
+      downloadDemoImageBtn.addEventListener("click", () => {
+        if (!lastDemoImageDataUrl) {
+          updateRobotMessage("Gere uma camada no mapa para criar a imagem do demonstrador.");
+          return;
+        }
+        const anchor = document.createElement("a");
+        anchor.href = lastDemoImageDataUrl;
+        anchor.download = "demonstrador_epigeodata.png";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      });
 
       const robotHints = [
         "Toque em gerar mapa sobreposto para visualizar o cruzamento entre agravo e clima.",
