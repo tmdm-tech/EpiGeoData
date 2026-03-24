@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import os
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -10,6 +11,104 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 app = Flask(__name__)
+
+
+DISEASE_FILE_ALIASES = {
+    "dengue": ["dengue"],
+    "esquistossomose": ["esquistossomose"],
+    "tuberculose": ["tuberculose"],
+    "chikungunya": ["chikungunya"],
+    "scz": ["scz", "sindrome_congenita_da_zika", "sindrome_congenita_zika", "zika"],
+}
+
+
+def _normalize_token(value: str) -> str:
+    value = value.strip().lower()
+    value = re.sub(r"\s+", "_", value)
+    value = re.sub(r"[^a-z0-9_]+", "", value)
+    return value
+
+
+def _resolve_disease_csv_path(disease_key: str) -> Path | None:
+    token = _normalize_token(disease_key)
+    aliases = DISEASE_FILE_ALIASES.get(token, [token])
+
+    candidates = [
+        Path(__file__).parent / "data" / "doencas",
+        Path(__file__).parent / "data",
+        Path(__file__).parent,
+    ]
+
+    for base in candidates:
+        if not base.exists() or not base.is_dir():
+            continue
+        for path in base.rglob("*.csv"):
+            stem = _normalize_token(path.stem)
+            if stem in aliases:
+                return path
+
+    return None
+
+
+def _row_value(row: dict, keys: list[str]) -> str:
+    for key in keys:
+        for row_key, row_value in row.items():
+            if _normalize_token(row_key) == key:
+                return str(row_value or "").strip()
+    return ""
+
+
+def _parse_number(raw: str) -> float | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    text = text.replace("%", "").replace(" ", "")
+    text = text.replace(".", "").replace(",", ".") if text.count(",") == 1 and text.count(".") > 1 else text
+    text = text.replace(",", ".")
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _load_disease_csv(disease_key: str) -> tuple[dict[str, float], Path] | tuple[None, None]:
+    csv_path = _resolve_disease_csv_path(disease_key)
+    if not csv_path:
+        return None, None
+
+    municipality_keys = [
+        "municipio",
+        "municipio_nome",
+        "nome_municipio",
+        "cidade",
+        "localidade",
+        "name",
+    ]
+    value_keys = [
+        "valor",
+        "casos",
+        "incidencia",
+        "indice",
+        "score",
+        "taxa",
+        "total",
+        "value",
+    ]
+
+    values: dict[str, float] = {}
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            municipio = _row_value(row, municipality_keys)
+            if not municipio:
+                continue
+            raw = _row_value(row, value_keys)
+            num = _parse_number(raw)
+            if num is None:
+                continue
+            values[municipio] = num
+
+    return values, csv_path
 
 
 def _check_password(password: str) -> bool:
@@ -159,6 +258,34 @@ def list_climate_layers() -> tuple[dict, int]:
         "camadas": available,
         "total": len(available)
     }), 200
+
+
+@app.get("/api/disease-data/<disease_key>")
+def get_disease_data(disease_key: str) -> tuple[dict, int]:
+    """Retorna dados de doença carregados de CSV local."""
+    values, path = _load_disease_csv(disease_key)
+    if values is None or path is None:
+        expected = ", ".join(sorted(DISEASE_FILE_ALIASES.keys()))
+        return {
+            "error": "Arquivo CSV de doença não encontrado",
+            "disease": disease_key,
+            "expected_keys": expected,
+        }, 404
+
+    nums = list(values.values())
+    return jsonify(
+        {
+            "disease": disease_key,
+            "source": str(path.relative_to(Path(__file__).parent)),
+            "municipios": values,
+            "summary": {
+                "total_municipios": len(nums),
+                "min": min(nums) if nums else None,
+                "max": max(nums) if nums else None,
+                "mean": round(sum(nums) / len(nums), 4) if nums else None,
+            },
+        }
+    ), 200
 
 
 if __name__ == "__main__":
