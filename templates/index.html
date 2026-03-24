@@ -596,17 +596,24 @@
 
       #demoCanvas {
         width: 100%;
-        height: 360px;
+        height: auto;
+        aspect-ratio: 3;
         border-radius: 10px;
         background: linear-gradient(160deg, #160a28, #281444);
         border: 1px solid rgba(208, 179, 255, 0.34);
+        display: block;
       }
 
       .demo-meta {
-        display: grid;
-        gap: 5px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 14px;
         font-size: 11px;
         color: #ead8ff;
+      }
+
+      .demo-meta span {
+        white-space: nowrap;
       }
 
       .demo-meta strong {
@@ -615,8 +622,9 @@
 
       .demo-actions {
         display: grid;
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr auto;
         gap: 6px;
+        align-items: center;
       }
 
       .demo-actions select {
@@ -986,6 +994,7 @@
               <aside class="demo-panel" aria-label="Demonstrador de sobreposição em imagem">
                 <p class="demo-title">Demonstrador em Imagem (tempo real)</p>
                 <canvas id="demoCanvas" width="960" height="620"></canvas>
+                                <canvas id="demoCanvas" width="900" height="300"></canvas>
                 <div class="demo-meta" id="demoMeta">
                   <span><strong>Status:</strong> aguardando geração de camada</span>
                 </div>
@@ -1003,8 +1012,8 @@
             </div>
             <div class="panel-actions">
               <button class="primary" id="generateOverlayBtn">Gerar mapa sobreposto</button>
-              <button class="secondary" id="exportPdfBtn">Solicitar Relatório PDF</button>
-              <button class="danger" id="exportSheetBtn">Solicitar Relatório de Imagens</button>
+              <button class="secondary" id="exportPdfBtn">🔒 Solicitar Relatório PDF</button>
+              <button class="danger" id="exportSheetBtn">🔒 Solicitar Relatório de Imagens</button>
             </div>
             <div class="download-actions">
               <button class="secondary" id="downloadClimateMapBtn">Visualizar mapa climático</button>
@@ -1345,7 +1354,9 @@
         const csvValues = Array.from(diseaseMunicipioValues.values()).filter((value) => Number.isFinite(value));
         if (csvValues.length > 0) {
           const avg = csvValues.reduce((acc, n) => acc + n, 0) / csvValues.length;
-          return Math.max(0, Math.min(100, Math.round(avg)));
+          const maxVal = Math.max(...csvValues, 1);
+          const normalized = Math.min(1, avg / maxVal);
+          return Math.max(0, Math.min(100, Math.round(normalized * 100)));
         }
         return aggravoBaseScore[selectedDisease.name] || 70;
       }
@@ -1377,8 +1388,11 @@
         if (!Number.isFinite(value)) {
           return fallback;
         }
-        const normalized = Math.max(0, Math.min(1, value / 100));
-        return 0.24 + normalized * 0.5;
+        const allVals = Array.from(diseaseMunicipioValues.values());
+        const maxVal = Math.max(...allVals, 1);
+        const minVal = Math.min(...allVals, 0);
+        const normalized = (value - minVal) / (Math.max(maxVal - minVal, 1));
+        return 0.22 + normalized * 0.54;
       }
 
       async function fetchMunicipioGeo(id) {
@@ -2542,6 +2556,12 @@
         passwordInput.focus();
       }
 
+      async function autoGenerateIfReady() {
+        if (selectedClimates.size > 0) {
+          await generateOverlay();
+        }
+      }
+
       async function generateOverlay() {
         if (selectedClimates.size === 0) {
           updateRobotMessage("Selecione ao menos uma variavel climatica antes de gerar o mapa sobreposto.");
@@ -2569,6 +2589,7 @@
 
         currentMapGeoJson = getCurrentBaseFeatureCollection();
         renderDemonstratorImage("sobreposição principal");
+        addDiseaseLegend();
 
         animateRobot("bounce");
         robotSmile();
@@ -2768,11 +2789,12 @@
               diseaseDataSource +
               "</small>"
           );
+          await autoGenerateIfReady();
         });
       });
 
       document.querySelectorAll("#climateButtons .chip").forEach((button) => {
-        button.addEventListener("click", () => {
+        button.addEventListener("click", async () => {
           toggleClimateButton(button);
           updateSelectionStatus();
           updateRobotMessage(
@@ -2780,6 +2802,7 @@
               (Array.from(selectedClimates).join(", ") || "nenhuma") +
               "</b>."
           );
+          await autoGenerateIfReady();
         });
       });
 
@@ -2857,8 +2880,8 @@
         }
 
         const hdCanvas = document.createElement("canvas");
-        hdCanvas.width = 1600;
-        hdCanvas.height = 1080;
+        hdCanvas.width = 2700;
+        hdCanvas.height = 900;
         renderDemonstratorImage(lastDemoLabel || "analise", {
           targetCanvas: hdCanvas,
           mode: selectedDemoMode,
@@ -2912,8 +2935,16 @@
       setTimeout(scheduleMapBootstrap, 80);
 
       fillGeresSelect();
-      loadDiseaseDataForSelection().finally(() => {
+      // Auto-seleciona Precipitacao como variável padrão inicial
+      selectedClimates.add("Precipitacao");
+      const defaultClimateBtn = document.querySelector('#climateButtons .chip[data-name="Precipitacao"]');
+      if (defaultClimateBtn) {
+        defaultClimateBtn.classList.add("active");
+      }
+
+      loadDiseaseDataForSelection().finally(async () => {
         updateSelectionStatus();
+        await autoGenerateIfReady();
       });
     </script>
   </body>
