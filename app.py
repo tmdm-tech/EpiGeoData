@@ -112,7 +112,7 @@ def _find_header_index(lines: list[str]) -> int | None:
         if ";" not in line:
             continue
         normalized = _normalize_header(line)
-        if "municipio" in normalized and "total" in normalized:
+        if "munic" in normalized and "total" in normalized:
             return idx
     return None
 
@@ -168,7 +168,7 @@ def _load_disease_csv(disease_key: str) -> tuple[dict[str, float], Path] | tuple
 
     municipio_idx = None
     for idx, token in enumerate(normalized_headers):
-        if any(key in token for key in municipality_keys):
+        if any(key in token for key in municipality_keys) or "munic" in token:
             municipio_idx = idx
             break
 
