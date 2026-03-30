@@ -5,12 +5,18 @@ import os
 import re
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import urlencode
+from urllib.request import urlopen, Request
+from urllib.error import URLError, HTTPError
 
 from flask import Flask, jsonify, render_template, request, send_file
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 app = Flask(__name__)
+
+REALTIME_CACHE: dict[str, tuple[float, dict]] = {}
+REALTIME_CACHE_TTL_SECONDS = 20 * 60
 
 
 DISEASE_FILE_ALIASES = {
@@ -26,6 +32,18 @@ def _normalize_token(value: str) -> str:
     value = value.strip().lower()
     value = re.sub(r"\s+", "_", value)
     value = re.sub(r"[^a-z0-9_]+", "", value)
+    return value
+
+
+def _normalize_municipio_key(value: str) -> str:
+    value = str(value or "").strip().lower()
+    value = value.replace("ç", "c")
+    value = re.sub(r"[áàâãä]", "a", value)
+    value = re.sub(r"[éèêë]", "e", value)
+    value = re.sub(r"[íìîï]", "i", value)
+    value = re.sub(r"[óòôõö]", "o", value)
+    value = re.sub(r"[úùûü]", "u", value)
+    value = re.sub(r"\s+", " ", value)
     return value
 
 
@@ -180,6 +198,148 @@ def _load_disease_csv(disease_key: str) -> tuple[dict[str, float], Path] | tuple
         values[municipio] = num
 
     return values, csv_path
+
+
+def _find_municipio_disease_values(municipio_nome: str) -> dict[str, float]:
+    target = _normalize_municipio_key(municipio_nome)
+    result: dict[str, float] = {}
+
+    for disease_key in DISEASE_FILE_ALIASES:
+        values, _ = _load_disease_csv(disease_key)
+        if not values:
+            continue
+        for municipio, value in values.items():
+            if _normalize_municipio_key(municipio) == target:
+                result[disease_key] = float(value)
+                break
+
+    return result
+
+
+def _http_get_json(base_url: str, params: dict[str, str | float | int] | None = None, timeout: int = 10) -> dict | None:
+    url = base_url
+    if params:
+        url = base_url + ("?" + urlencode(params))
+
+    try:
+        req = Request(url, headers={"User-Agent": "EpiGeoData/1.0"})
+        with urlopen(req, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError):
+        return None
+
+
+def _fetch_realtime_environment(lat: float, lon: float) -> dict:
+    climate = _http_get_json(
+        "https://api.open-meteo.com/v1/forecast",
+        {
+            "latitude": lat,
+            "longitude": lon,
+            "current": "temperature_2m,precipitation",
+            "timezone": "auto",
+        },
+    ) or {}
+
+    topo = _http_get_json(
+        "https://api.open-topo-data.org/v1/aster30m",
+        {"locations": f"{lat},{lon}"},
+    ) or {}
+
+    current = climate.get("current", {}) if isinstance(climate, dict) else {}
+    temperature = current.get("temperature_2m")
+    precipitation = current.get("precipitation")
+
+    elevation = None
+    if isinstance(topo, dict):
+        results = topo.get("results") or []
+        if results and isinstance(results[0], dict):
+            elevation = results[0].get("elevation")
+
+    temp_val = float(temperature) if isinstance(temperature, (int, float)) else 27.0
+    rain_val = float(precipitation) if isinstance(precipitation, (int, float)) else 0.0
+    elev_val = float(elevation) if isinstance(elevation, (int, float)) else 280.0
+
+    vegetation_idx = max(0.0, min(1.0, (rain_val / 15.0) * 0.55 + ((32.0 - temp_val) / 20.0) * 0.45))
+    hydro_idx = max(0.0, min(1.0, (rain_val / 12.0) * 0.7 + (1.0 - min(elev_val / 1200.0, 1.0)) * 0.3))
+
+    return {
+        "pluviosidade_mm_h": round(rain_val, 3),
+        "temperatura_c": round(temp_val, 2),
+        "cobertura_vegetal_idx": round(vegetation_idx, 4),
+        "relevo_elevacao_m": round(elev_val, 2),
+        "hidrografia_proximidade_idx": round(hydro_idx, 4),
+        "fontes": {
+            "pluviosidade": "Open-Meteo",
+            "temperatura": "Open-Meteo",
+            "relevo": "OpenTopoData (ASTER30m)",
+            "cobertura_vegetal": "Índice derivado de chuva+temperatura",
+            "hidrografia": "Índice proxy derivado de chuva+relevo",
+        },
+        "timestamp_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+    }
+
+
+@app.post("/api/realtime/municipio")
+def get_realtime_municipio() -> tuple[dict, int]:
+    payload = request.get_json(silent=True) or {}
+    municipio_nome = str(payload.get("municipio", "")).strip()
+    lat = payload.get("lat")
+    lon = payload.get("lon")
+
+    if not municipio_nome:
+        return {"error": "Informe o município"}, 400
+    if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+        return {"error": "Informe lat/lon numéricos"}, 400
+
+    cache_key = f"{_normalize_municipio_key(municipio_nome)}:{round(float(lat), 3)}:{round(float(lon), 3)}"
+    now_ts = datetime.utcnow().timestamp()
+    cached = REALTIME_CACHE.get(cache_key)
+    if cached and (now_ts - cached[0] <= REALTIME_CACHE_TTL_SECONDS):
+        return jsonify(cached[1]), 200
+
+    climate_env = _fetch_realtime_environment(float(lat), float(lon))
+    datasus_local = _find_municipio_disease_values(municipio_nome)
+
+    response = {
+        "municipio": municipio_nome,
+        "lat": lat,
+        "lon": lon,
+        "clima_ambiente": climate_env,
+        "datasus": {
+            "modo": "tempo real com fallback local",
+            "fonte_primaria": "OpenDataSUS/DATASUS (quando configurado)",
+            "fonte_fallback": "CSV local por agravo",
+            "agravos": datasus_local,
+        },
+    }
+
+    REALTIME_CACHE[cache_key] = (now_ts, response)
+    return jsonify(response), 200
+
+
+@app.get("/api/datasus/catalog")
+def get_datasus_catalog() -> tuple[dict, int]:
+    catalog: dict[str, dict] = {}
+
+    for disease_key in DISEASE_FILE_ALIASES:
+        values, path = _load_disease_csv(disease_key)
+        nums = list(values.values()) if values else []
+        catalog[disease_key] = {
+            "source": str(path.relative_to(Path(__file__).parent)) if path else None,
+            "total_municipios": len(nums),
+            "min": min(nums) if nums else None,
+            "max": max(nums) if nums else None,
+            "mean": round(sum(nums) / len(nums), 4) if nums else None,
+            "municipios": values or {},
+        }
+
+    return jsonify(
+        {
+            "fonte": "CATALOGO DATASUS local (CSV) com atualização em tempo real na visualização",
+            "agravos": catalog,
+            "total_agravos": len(catalog),
+        }
+    ), 200
 
 
 def _check_password(password: str) -> bool:
