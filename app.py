@@ -17,6 +17,7 @@ app = Flask(__name__)
 
 REALTIME_CACHE: dict[str, tuple[float, dict]] = {}
 REALTIME_CACHE_TTL_SECONDS = 20 * 60
+DEFAULT_PROFESSIONAL_MAP_TITLE = "EpiGeoData | Mapa Coropletico Cientifico - Pernambuco"
 
 
 DISEASE_FILE_ALIASES = {
@@ -515,6 +516,42 @@ def get_disease_data(disease_key: str) -> tuple[dict, int]:
                 "max": max(nums) if nums else None,
                 "mean": round(sum(nums) / len(nums), 4) if nums else None,
             },
+        }
+    ), 200
+
+
+@app.post("/api/maps/professional-overlay")
+def generate_professional_overlay_map() -> tuple[dict, int]:
+    payload = request.get_json(silent=True) or {}
+    disease_key = str(payload.get("disease_key", "tuberculose")).strip()
+    title = str(payload.get("title", "")).strip() or DEFAULT_PROFESSIONAL_MAP_TITLE
+
+    try:
+        from scripts.generate_choropleth_brazil import generate_professional_choropleth
+
+        result = generate_professional_choropleth(
+            disease_key=disease_key,
+            title=title,
+        )
+    except FileNotFoundError as error:
+        return {"error": str(error)}, 404
+    except Exception as error:  # pragma: no cover - fallback operacional
+        return {
+            "error": "Falha ao gerar mapa profissional",
+            "details": str(error),
+        }, 500
+
+    static_root = Path(__file__).parent / "static"
+    relative = result.output_file.relative_to(static_root)
+    image_url = f"/static/{relative.as_posix()}?v={int(datetime.utcnow().timestamp())}"
+
+    return jsonify(
+        {
+            "ok": True,
+            "disease_key": result.disease_key,
+            "image_url": image_url,
+            "source_csv": str(result.source_csv.relative_to(Path(__file__).parent)),
+            "variable": result.variable_label,
         }
     ), 200
 

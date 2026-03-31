@@ -746,6 +746,20 @@
         display: block;
       }
 
+      .professional-map-preview {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 3;
+        border-radius: 10px;
+        border: 1px solid rgba(208, 179, 255, 0.34);
+        display: none;
+        object-fit: cover;
+      }
+
+      .professional-map-preview.visible {
+        display: block;
+      }
+
       .demo-meta {
         display: flex;
         flex-wrap: wrap;
@@ -1129,8 +1143,10 @@
               <aside class="demo-panel" aria-label="Demonstrador de sobreposição em imagem">
                 <p class="demo-title">Demonstrador em Imagem (tempo real)</p>
                 <canvas id="demoCanvas" width="960" height="620"></canvas>
+                <img id="professionalMapPreview" class="professional-map-preview" alt="Mapa profissional gerado no backend" />
                 <div class="demo-meta" id="demoMeta">
                   <span><strong>Status:</strong> aguardando geração de camada</span>
+                  <span id="professionalMapStatus"><strong>Cartografia:</strong> aguardando geração no backend</span>
                 </div>
                 <div class="demo-actions">
                   <select id="analysisModeSelect" aria-label="Método de análise espacial">
@@ -1141,6 +1157,7 @@
                     <option value="density">Densidade</option>
                     <option value="moran">Moran local</option>
                   </select>
+                  <button class="secondary" id="downloadProfessionalMapBtn">Baixar mapa cartográfico (300 dpi)</button>
                   <button class="secondary" id="downloadDemoImageBtn">Baixar imagem demonstrador (HD)</button>
                 </div>
               </aside>
@@ -1238,6 +1255,9 @@
       const demoMeta = document.getElementById("demoMeta");
       const analysisModeSelect = document.getElementById("analysisModeSelect");
       const downloadDemoImageBtn = document.getElementById("downloadDemoImageBtn");
+      const downloadProfessionalMapBtn = document.getElementById("downloadProfessionalMapBtn");
+      const professionalMapPreview = document.getElementById("professionalMapPreview");
+      const professionalMapStatus = document.getElementById("professionalMapStatus");
 
       const geresMunicipios = {
         "I GERES": ["Recife", "Moreno", "Jaboatão dos Guararapes", "Paulista", "Camaragibe", "Cabo de Santo Agostinho", "Olinda", "Igarassu", "Abreu e Lima", "Fernando de Noronha", "Glória do Goitá", "Ilha de Itamaracá"],
@@ -1358,6 +1378,8 @@
       let mapReadyPromise = null;
       let legendControl = null;
       let gwrMarkerLayer = null;
+      let lastProfessionalMapUrl = "";
+      const institutionalProfessionalMapTitle = "EpiGeoData | Mapa Coropletico Cientifico - Pernambuco";
 
       const diseaseApiKeyByName = {
         "Sindrome Congenita da Zika": "scz",
@@ -1799,6 +1821,39 @@
           if (bounds && bounds.isValid && bounds.isValid()) {
             map.fitBounds(bounds, { padding: [22, 22] });
           }
+        }
+      }
+
+      async function generateProfessionalOverlayMap(title) {
+        const diseaseKey = resolveDiseaseApiKey(selectedDisease.name);
+
+        try {
+          const response = await fetch("/api/maps/professional-overlay", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              disease_key: diseaseKey,
+              title
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error("Falha ao gerar mapa profissional");
+          }
+
+          const payload = await response.json();
+          if (!payload || !payload.image_url) {
+            throw new Error("Resposta sem URL de mapa");
+          }
+
+          lastProfessionalMapUrl = payload.image_url;
+          professionalMapPreview.src = payload.image_url;
+          professionalMapPreview.classList.add("visible");
+          professionalMapStatus.innerHTML = "<strong>Cartografia:</strong> mapa científico gerado no backend";
+        } catch (_) {
+          lastProfessionalMapUrl = "";
+          professionalMapPreview.classList.remove("visible");
+          professionalMapStatus.innerHTML = "<strong>Cartografia:</strong> falha ao gerar no backend";
         }
       }
 
@@ -2923,6 +2978,8 @@
           "Mapa sobreposto (GWR) gerado: <b>" + overlayName + "</b>." +
             "<br/><small>Base em tempo real: pluviosidade, temperatura, cobertura vegetal, relevo e hidrografia + DATASUS.</small>"
         );
+
+        await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
       }
 
       function openAuthModal(type) {
@@ -3212,6 +3269,20 @@
         const anchor = document.createElement("a");
         anchor.href = hdCanvas.toDataURL("image/png");
         anchor.download = "demonstrador_epigeodata_hd.png";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      });
+
+      downloadProfessionalMapBtn.addEventListener("click", () => {
+        if (!lastProfessionalMapUrl) {
+          updateRobotMessage("Gere o mapa sobreposto para criar o mapa cartográfico profissional.");
+          return;
+        }
+
+        const anchor = document.createElement("a");
+        anchor.href = lastProfessionalMapUrl;
+        anchor.download = "mapa_cartografico_profissional.png";
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();
