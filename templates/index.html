@@ -1380,6 +1380,7 @@
       let gwrMarkerLayer = null;
       let lastProfessionalMapUrl = "";
       const institutionalProfessionalMapTitle = "EpiGeoData | Mapa Coropletico Cientifico - Pernambuco";
+      const preparedHeatmapInputName = "municpios_pe";
 
       const diseaseApiKeyByName = {
         "Sindrome Congenita da Zika": "scz",
@@ -1825,6 +1826,33 @@
       }
 
       async function generateProfessionalOverlayMap(title) {
+        try {
+          const preparedResponse = await fetch("/api/maps/prepared-heatmap-overlay", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ input_file: preparedHeatmapInputName })
+          });
+
+          if (preparedResponse.ok) {
+            const preparedPayload = await preparedResponse.json();
+            const combinedMap = preparedPayload?.maps?.combined;
+            if (!combinedMap) {
+              throw new Error("Resposta sem mapa combinado da sobreposição");
+            }
+
+            lastProfessionalMapUrl = combinedMap;
+            professionalMapPreview.src = combinedMap;
+            professionalMapPreview.classList.add("visible");
+            professionalMapStatus.innerHTML =
+              "<strong>Cartografia:</strong> sobreposição científica gerada com arquivo preparado (" +
+              preparedPayload.input_file +
+              ")";
+            return;
+          }
+        } catch (_) {
+          // fallback para o mapa coroplético profissional já existente
+        }
+
         const diseaseKey = resolveDiseaseApiKey(selectedDisease.name);
 
         try {
@@ -3276,13 +3304,13 @@
 
       downloadProfessionalMapBtn.addEventListener("click", () => {
         if (!lastProfessionalMapUrl) {
-          updateRobotMessage("Gere o mapa sobreposto para criar o mapa cartográfico profissional.");
+          updateRobotMessage("Gere o mapa sobreposto para criar a imagem científica da sobreposição.");
           return;
         }
 
         const anchor = document.createElement("a");
         anchor.href = lastProfessionalMapUrl;
-        anchor.download = "mapa_cartografico_profissional.png";
+        anchor.download = "sobreposicao_cientifica_pernambuco.png";
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();

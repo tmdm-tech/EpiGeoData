@@ -18,6 +18,7 @@ app = Flask(__name__)
 REALTIME_CACHE: dict[str, tuple[float, dict]] = {}
 REALTIME_CACHE_TTL_SECONDS = 20 * 60
 DEFAULT_PROFESSIONAL_MAP_TITLE = "EpiGeoData | Mapa Coropletico Cientifico - Pernambuco"
+DEFAULT_PREPARED_HEATMAP_FILE = "municpios_pe"
 
 
 DISEASE_FILE_ALIASES = {
@@ -53,6 +54,35 @@ def _normalize_header(value: str) -> str:
     value = re.sub(r"\s+", "_", value)
     value = re.sub(r"[^a-z0-9_]+", "", value)
     return value
+
+
+def _resolve_prepared_heatmap_file(filename: str = DEFAULT_PREPARED_HEATMAP_FILE) -> Path | None:
+    candidates = [
+        Path(__file__).parent,
+        Path(__file__).parent / "data",
+        Path(__file__).parent / "data" / "climaticas",
+        Path(__file__).parent / "static",
+    ]
+    variants = [
+        filename,
+        f"{filename}.csv",
+        f"{filename}.xlsx",
+        f"{filename}.xls",
+        "municipios_pe",
+        "municipios_pe.csv",
+        "municipios_pe.xlsx",
+        "municipios_pe.xls",
+    ]
+
+    for base in candidates:
+        if not base.exists() or not base.is_dir():
+            continue
+        for variant in variants:
+            candidate = base / variant
+            if candidate.exists() and candidate.is_file():
+                return candidate
+
+    return None
 
 
 def _resolve_disease_csv_path(disease_key: str) -> Path | None:
@@ -552,6 +582,62 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
             "image_url": image_url,
             "source_csv": str(result.source_csv.relative_to(Path(__file__).parent)),
             "variable": result.variable_label,
+        }
+    ), 200
+
+
+@app.post("/api/maps/prepared-heatmap-overlay")
+def generate_prepared_heatmap_overlay() -> tuple[dict, int]:
+    payload = request.get_json(silent=True) or {}
+    requested_file = str(payload.get("input_file", DEFAULT_PREPARED_HEATMAP_FILE)).strip()
+    prepared_file = _resolve_prepared_heatmap_file(requested_file)
+
+    if not prepared_file:
+        return {
+            "error": "Arquivo preparado nao encontrado",
+            "requested": requested_file,
+            "expected_examples": [
+                "municpios_pe",
+                "municpios_pe.csv",
+                "municipios_pe.csv",
+                "municipios_pe.xlsx",
+            ],
+        }, 404
+
+    prefix = f"overlay_preparado_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+
+    try:
+        from scripts.generate_pernambuco_heatmap import generate_pernambuco_heatmaps
+
+        outputs = generate_pernambuco_heatmaps(
+            input_path=prepared_file,
+            output_dir=Path(__file__).parent / "static" / "maps",
+            prefix=prefix,
+            dpi=300,
+        )
+    except Exception as error:  # pragma: no cover - erro de runtime em ambiente
+        return {
+            "error": "Falha ao gerar mapas da sobreposicao preparada",
+            "details": str(error),
+            "input_file": str(prepared_file.relative_to(Path(__file__).parent)),
+        }, 500
+
+    static_root = Path(__file__).parent / "static"
+    ts = int(datetime.utcnow().timestamp())
+
+    def _to_static_url(path: Path) -> str:
+        relative = path.relative_to(static_root)
+        return f"/static/{relative.as_posix()}?v={ts}"
+
+    return jsonify(
+        {
+            "ok": True,
+            "input_file": str(prepared_file.relative_to(Path(__file__).parent)),
+            "maps": {
+                "base": _to_static_url(outputs.base_map),
+                "marked": _to_static_url(outputs.marked_map),
+                "combined": _to_static_url(outputs.combined_map),
+            },
         }
     ), 200
 
