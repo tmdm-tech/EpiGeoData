@@ -1014,6 +1014,99 @@
           height: 300px;
         }
       }
+
+      /* Painel de status das fontes climáticas */
+      .climate-status-panel {
+        margin-top: 12px;
+        border: 1px solid rgba(227, 202, 255, 0.25);
+        border-radius: 10px;
+        overflow: hidden;
+        font-size: 12px;
+      }
+
+      .climate-status-toggle {
+        width: 100%;
+        background: rgba(255,255,255,0.05);
+        border: none;
+        color: var(--ink);
+        padding: 8px 12px;
+        cursor: pointer;
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12px;
+        font-family: inherit;
+      }
+
+      .climate-status-toggle:hover {
+        background: rgba(255,255,255,0.1);
+      }
+
+      .climate-status-toggle .toggle-arrow {
+        transition: transform 200ms;
+      }
+
+      .climate-status-toggle.open .toggle-arrow {
+        transform: rotate(90deg);
+      }
+
+      .climate-status-body {
+        display: none;
+        padding: 10px 12px 12px;
+      }
+
+      .climate-status-body.open {
+        display: block;
+      }
+
+      .climate-source-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+      }
+
+      .climate-source-row:last-child {
+        border-bottom: none;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .status-dot.disponivel { background: #4caf50; }
+      .status-dot.pendente   { background: #ff9800; }
+      .status-dot.loading    { background: #888; }
+
+      .source-label {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: rgba(255,255,255,0.75);
+      }
+
+      .source-tipo {
+        color: rgba(255,255,255,0.4);
+        font-size: 10px;
+        flex-shrink: 0;
+      }
+
+      .status-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 20px;
+        font-weight: 600;
+        flex-shrink: 0;
+      }
+
+      .status-badge.disponivel { background: rgba(76,175,80,0.2); color: #81c784; }
+      .status-badge.pendente   { background: rgba(255,152,0,0.2);  color: #ffb74d; }
     </style>
   </head>
   <body>
@@ -1096,6 +1189,19 @@
                 <div class="icon">🌿</div>
                 <div class="chip-content"><strong>Cobertura vegetal</strong><span>Camada climatica</span></div>
               </button>
+            </div>
+
+            <!-- Painel de status das fontes climáticas -->
+            <div class="climate-status-panel">
+              <button class="climate-status-toggle" id="climateStatusToggle" onclick="toggleClimateStatusPanel()">
+                <span>📡 Status das fontes climáticas</span>
+                <span class="toggle-arrow">▶</span>
+              </button>
+              <div class="climate-status-body" id="climateStatusBody">
+                <div id="climateSourceList" style="color:rgba(255,255,255,0.5);font-size:11px;padding:4px 0;">
+                  Carregando…
+                </div>
+              </div>
             </div>
           </article>
 
@@ -1572,6 +1678,67 @@
         municipioGeoCache.set(id, geojson);
         return geojson;
       }
+
+      // ── Painel de status das fontes climáticas ──────────────────────────────
+      function toggleClimateStatusPanel() {
+        const toggle = document.getElementById("climateStatusToggle");
+        const body   = document.getElementById("climateStatusBody");
+        const isOpen = body.classList.toggle("open");
+        toggle.classList.toggle("open", isOpen);
+        if (isOpen) loadClimateSourceStatus();
+      }
+
+      let _climateStatusLoaded = false;
+
+      async function loadClimateSourceStatus() {
+        if (_climateStatusLoaded) return;
+        const list = document.getElementById("climateSourceList");
+        try {
+          const res  = await fetch("/api/climate-layers");
+          const data = await res.json();
+          const camadas = data.camadas || [];
+
+          // Agrupa exibição por tipo de camada
+          const tipoLabel = {
+            precipitacao:      "Precipitação",
+            temperatura:       "Temperatura",
+            cobertura_vegetal: "Cobertura vegetal",
+            relevo_hidrografia:"Relevo + Hidrografia",
+          };
+
+          let html = "";
+          for (const camada of camadas) {
+            const label = tipoLabel[camada.tipo] || camada.tipo;
+            const layerStatus = camada.status;   // "disponivel" | "indisponivel"
+            html += `<div style="margin-bottom:8px;">
+              <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px;">${label}</div>`;
+
+            // GeoJSON da camada
+            html += `<div class="climate-source-row">
+              <span class="status-dot ${layerStatus}"></span>
+              <span class="source-label">GeoJSON da camada (${camada.layer}.geojson)</span>
+              <span class="status-badge ${layerStatus}">${layerStatus}</span>
+            </div>`;
+
+            // Arquivos-fonte originais
+            for (const src of (camada.sources || [])) {
+              html += `<div class="climate-source-row">
+                <span class="status-dot ${src.status}"></span>
+                <span class="source-label" title="${src.name}">${src.name}</span>
+                <span class="source-tipo">${camada.tipo}</span>
+                <span class="status-badge ${src.status}">${src.status}</span>
+              </div>`;
+            }
+            html += `</div>`;
+          }
+
+          list.innerHTML = html || "<span>Nenhuma fonte registrada.</span>";
+          _climateStatusLoaded = true;
+        } catch (e) {
+          list.textContent = "Erro ao carregar status: " + e.message;
+        }
+      }
+      // ───────────────────────────────────────────────────────────────────────
 
       async function fetchClimateLayerGeojson(climateLabel) {
         const climateApiKeyByName = {
