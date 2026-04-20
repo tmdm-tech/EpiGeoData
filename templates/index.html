@@ -1353,6 +1353,7 @@
       let municipioLayer;
       let geresLayerGroup;
       let overlayLayer;
+      let climateOverlayLayer;
       let municipioCatalog = [];
       let activeGeres = "ALL";
       let selectedDisease = {
@@ -1366,6 +1367,7 @@
       let pendingExportType = null;
       let selectedRequesterRole = "";
       const municipioGeoCache = new Map();
+      const climateGeojsonCache = new Map();
       const socioValueCache = new Map();
       let socioMunicipioValues = new Map();
       let diseaseMunicipioValues = new Map();
@@ -1571,10 +1573,108 @@
         return geojson;
       }
 
+      async function fetchClimateLayerGeojson(climateLabel) {
+        const climateApiKeyByName = {
+          "Precipitacao": "precipitacao",
+          "Temperatura": "temperatura",
+          "Cobertura vegetal": "cobertura_vegetal",
+          "Relevo + Hidrografia": "queimadas"
+        };
+
+        const key = climateApiKeyByName[climateLabel];
+        if (!key) {
+          return null;
+        }
+
+        if (climateGeojsonCache.has(key)) {
+          return climateGeojsonCache.get(key);
+        }
+
+        const response = await fetch("/api/climate-layers/" + key);
+        if (!response.ok) {
+          return null;
+        }
+
+        const payload = await response.json();
+        climateGeojsonCache.set(key, payload);
+        return payload;
+      }
+
+      function climateLayerStyle(climateLabel) {
+        const fillColor = climateOverlayColor[climateLabel] || "#4d87d7";
+        return {
+          color: "#233245",
+          weight: 1,
+          fillColor,
+          fillOpacity: 0.18,
+        };
+      }
+
+      async function drawSelectedClimateLayers() {
+        if (!map) {
+          return;
+        }
+
+        if (climateOverlayLayer) {
+          map.removeLayer(climateOverlayLayer);
+          climateOverlayLayer = null;
+        }
+
+        if (selectedClimates.size === 0) {
+          return;
+        }
+
+        const allFeatures = [];
+        for (const climateLabel of selectedClimates) {
+          const geo = await fetchClimateLayerGeojson(climateLabel);
+          if (!geo || !geo.features || geo.features.length === 0) {
+            continue;
+          }
+
+          const layer = L.geoJSON(geo, {
+            style: climateLayerStyle(climateLabel),
+            pointToLayer: (_, latlng) =>
+              L.circleMarker(latlng, {
+                radius: 4,
+                color: "#233245",
+                weight: 0.8,
+                fillColor: climateOverlayColor[climateLabel] || "#4d87d7",
+                fillOpacity: 0.45,
+              }),
+          });
+
+          layer.eachLayer((featureLayer) => {
+            const featureGeo = featureLayer.toGeoJSON();
+            if (featureGeo) {
+              allFeatures.push(featureGeo);
+            }
+          });
+
+          if (!climateOverlayLayer) {
+            climateOverlayLayer = L.layerGroup([]).addTo(map);
+          }
+          climateOverlayLayer.addLayer(layer);
+        }
+
+        if (allFeatures.length > 0) {
+          currentMapGeoJson = {
+            type: "FeatureCollection",
+            features: [
+              ...featureCollectionFromGeoJson(getCurrentBaseFeatureCollection() || estadoGeoCache).features,
+              ...allFeatures,
+            ],
+          };
+        }
+      }
       function clearOverlayLayer() {
         if (overlayLayer && map) {
           map.removeLayer(overlayLayer);
           overlayLayer = null;
+        }
+
+        if (climateOverlayLayer && map) {
+          map.removeLayer(climateOverlayLayer);
+          climateOverlayLayer = null;
         }
 
         if (gwrMarkerLayer && map) {
@@ -2584,23 +2684,27 @@
           addDiseaseLegend();
         } else if (category === "climatico") {
           addClimateLegend();
+          await drawSelectedClimateLayers();
         }
-        currentMapGeoJson = {
-          type: "FeatureCollection",
-          features: base.features.map((feature) => ({
-            ...feature,
-            properties: {
-              ...(feature.properties || {}),
-              categoria_mapa: category,
-              doenca: selectedDisease.name,
-              fonte_dados_doenca: diseaseDataSource,
-              valor_doenca: diseaseMunicipioValues.get(normalizeName(getFeatureMunicipioName(feature))) ?? null,
-              variaveis_climaticas: Array.from(selectedClimates),
-              geres: activeGeres === "ALL" ? "Todas as GERES" : activeGeres,
-              municipio: municipioSelect.options[municipioSelect.selectedIndex]?.text || "Todos os municipios"
-            }
-          }))
-        };
+
+        if (!currentMapGeoJson || !currentMapGeoJson.features || currentMapGeoJson.features.length === 0 || category !== "climatico") {
+          currentMapGeoJson = {
+            type: "FeatureCollection",
+            features: base.features.map((feature) => ({
+              ...feature,
+              properties: {
+                ...(feature.properties || {}),
+                categoria_mapa: category,
+                doenca: selectedDisease.name,
+                fonte_dados_doenca: diseaseDataSource,
+                valor_doenca: diseaseMunicipioValues.get(normalizeName(getFeatureMunicipioName(feature))) ?? null,
+                variaveis_climaticas: Array.from(selectedClimates),
+                geres: activeGeres === "ALL" ? "Todas as GERES" : activeGeres,
+                municipio: municipioSelect.options[municipioSelect.selectedIndex]?.text || "Todos os municipios"
+              }
+            }))
+          };
+        }
 
         updateRobotMessage("Mapa de <b>" + description + "</b> preparado para download.<br/><small>Fonte agravos: " + diseaseDataSource + "</small>");
         renderDemonstratorImage("camada " + description);
@@ -2874,7 +2978,9 @@
           }
           map.fitBounds(merged, { padding: [22, 22] });
         }
-        currentMapGeoJson = getCurrentBaseFeatureCollection();
+        if (!currentMapGeoJson || !currentMapGeoJson.features || currentMapGeoJson.features.length === 0) {
+          currentMapGeoJson = getCurrentBaseFeatureCollection();
+        }
         renderDemonstratorImage("base GERES");
       }
 
@@ -2967,6 +3073,8 @@
           overlayLayer = L.geoJSON(estadoGeoCache, { style }).addTo(map);
           fitOverlayBounds(overlayLayer);
         }
+
+        await drawSelectedClimateLayers();
 
         gwrMarkerLayer = L.layerGroup().addTo(map);
         gwrRows.forEach((row) => {

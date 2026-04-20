@@ -19,7 +19,51 @@ REALTIME_CACHE: dict[str, tuple[float, dict]] = {}
 REALTIME_CACHE_TTL_SECONDS = 20 * 60
 DEFAULT_PROFESSIONAL_MAP_TITLE = "EpiGeoData | Mapa Coropletico Cientifico - Pernambuco"
 DEFAULT_PREPARED_HEATMAP_FILE = "municpios_pe"
+CLIMATE_SOURCE_BINDINGS = {
+    "precipitacao": [
+        "Precipitacao_INMET_ANA-20260416T16124",
+        "Precipitação_INMET_ANA-20260416T16124",
+    ],
+    "cobertura_vegetal": [
+        "states_caatinga_biome.zip",
+        "residual_biome_caatinga_v20260330.zip",
+        "conservation_units_caatinga_biome.zip",
+    ],
+    "relevo_hidrografia": [
+        "Instalador Hidro Build 1.4.0.83.zip",
+    ],
+}
 
+CLIMATE_LAYER_BINDINGS = {
+    "precipitacao": "precipitacao",
+    "temperatura": "temperatura",
+    "cobertura_vegetal": "cobertura_vegetal",
+    "relevo_hidrografia": "queimadas",
+}
+
+
+def _resolve_climate_source_file(filename: str) -> Path | None:
+    candidates = [
+        Path(__file__).parent,
+        Path(__file__).parent / "data",
+        Path(__file__).parent / "data" / "climaticas",
+        Path(__file__).parent / "static",
+    ]
+    for base in candidates:
+        if not base.exists() or not base.is_dir():
+            continue
+        direct = base / filename
+        if direct.exists() and direct.is_file():
+            return direct
+
+        token = _normalize_token(Path(filename).stem)
+        for path in base.rglob("*"):
+            if not path.is_file():
+                continue
+            if _normalize_token(path.stem) == token:
+                return path
+
+    return None
 
 DISEASE_FILE_ALIASES = {
     "dengue": ["dengue"],
@@ -502,24 +546,52 @@ def get_climate_layers(climate_type: str) -> tuple[dict, int]:
 
 @app.get("/api/climate-layers")
 def list_climate_layers() -> tuple[dict, int]:
-    """Lista todos os tipos de camadas climáticas disponíveis"""
-    climate_types = ["precipitacao", "temperatura", "queimadas", "cobertura_vegetal"]
+    """Lista todos os tipos de camadas climáticas disponíveis e suas fontes vinculadas."""
     data_dir = Path(__file__).parent / "data/climaticas"
-    
+
     available = []
-    for climate_type in climate_types:
-        file_path = data_dir / f"{climate_type}.geojson"
-        if file_path.exists():
-            available.append({
-                "tipo": climate_type,
-                "url": f"/api/climate-layers/{climate_type}",
-                "status": "disponível"
-            })
-    
-    return jsonify({
-        "camadas": available,
-        "total": len(available)
-    }), 200
+    for climate_type, layer_name in CLIMATE_LAYER_BINDINGS.items():
+        file_path = data_dir / f"{layer_name}.geojson"
+        sources = []
+        for source_name in CLIMATE_SOURCE_BINDINGS.get(climate_type, []):
+            resolved = _resolve_climate_source_file(source_name)
+            sources.append(
+                {
+                    "name": source_name,
+                    "status": "disponivel" if resolved else "pendente",
+                    "path": str(resolved.relative_to(Path(__file__).parent)) if resolved else None,
+                }
+            )
+
+        item = {
+            "tipo": climate_type,
+            "layer": layer_name,
+            "url": f"/api/climate-layers/{layer_name}",
+            "status": "disponivel" if file_path.exists() else "indisponivel",
+            "sources": sources,
+        }
+        available.append(item)
+
+    return jsonify({"camadas": available, "total": len(available)}), 200
+
+
+@app.get("/api/climate-sources")
+def list_climate_sources() -> tuple[dict, int]:
+    """Retorna o mapeamento de fontes climáticas para uso na plataforma."""
+    data = []
+    for climate_type, source_names in CLIMATE_SOURCE_BINDINGS.items():
+        for source_name in source_names:
+            resolved = _resolve_climate_source_file(source_name)
+            data.append(
+                {
+                    "tipo": climate_type,
+                    "source": source_name,
+                    "status": "disponivel" if resolved else "pendente",
+                    "path": str(resolved.relative_to(Path(__file__).parent)) if resolved else None,
+                }
+            )
+
+    return jsonify({"sources": data, "total": len(data)}), 200
 
 
 @app.get("/api/disease-data/<disease_key>")
