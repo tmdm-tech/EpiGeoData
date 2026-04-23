@@ -2471,51 +2471,7 @@
         };
       }
 
-      function drawClimatePatterns(ctx, width, height) {
-        if (selectedClimates.has("Precipitacao")) {
-          ctx.strokeStyle = "rgba(112, 188, 255, 0.35)";
-          ctx.lineWidth = 1;
-          for (let i = 0; i < width; i += 14) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i - 22, height);
-            ctx.stroke();
-          }
-        }
-
-        if (selectedClimates.has("Temperatura")) {
-          ctx.fillStyle = "rgba(255, 169, 126, 0.18)";
-          for (let i = 0; i < 28; i += 1) {
-            const x = (i * 37) % width;
-            const y = (i * 57) % height;
-            ctx.beginPath();
-            ctx.arc(x, y, 8, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-
-        if (selectedClimates.has("Cobertura vegetal")) {
-          ctx.strokeStyle = "rgba(130, 224, 144, 0.2)";
-          ctx.lineWidth = 2;
-          for (let y = 10; y < height; y += 18) {
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.bezierCurveTo(width * 0.25, y - 6, width * 0.5, y + 8, width, y - 2);
-            ctx.stroke();
-          }
-        }
-
-        if (selectedClimates.has("Relevo + Hidrografia")) {
-          ctx.strokeStyle = "rgba(108, 84, 201, 0.28)";
-          ctx.lineWidth = 1.8;
-          for (let y = 6; y < height; y += 24) {
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.quadraticCurveTo(width * 0.35, y - 10, width, y + 2);
-            ctx.stroke();
-          }
-        }
-      }
+      // drawClimatePatterns foi substituído por indicadores de clima por polígono (sem listras)
 
       function getFeatureCentroidLonLat(feature) {
         const points = flattenCoordinates(feature.geometry);
@@ -2677,7 +2633,8 @@
           maxY = Math.max(maxY, y);
         });
 
-        const pad = 24;
+        // margem generosa para não cortar bordas dos municípios
+        const pad = 40;
         const geoW = Math.max(0.000001, maxX - minX);
         const geoH = Math.max(0.000001, maxY - minY);
         const scale = Math.min((width - pad * 2) / geoW, (height - pad * 2) / geoH);
@@ -2688,6 +2645,26 @@
           offsetX + (coord[0] - minX) * scale,
           height - (offsetY + (coord[1] - minY) * scale)
         ];
+
+        // Coleta valores reais de doença por município para coroplético
+        const rawDiseaseVals = [];
+        const featureDiseaseMap = new Map();
+        featureCollection.features.forEach((feature, idx) => {
+          const nome = normalizeName(getFeatureMunicipioName(feature));
+          let val = diseaseMunicipioValues.get(nome);
+          if (!Number.isFinite(val)) {
+            // tenta variações comuns de normalização
+            for (const [k, v] of diseaseMunicipioValues.entries()) {
+              if (k.includes(nome) || nome.includes(k)) { val = v; break; }
+            }
+          }
+          featureDiseaseMap.set(idx, Number.isFinite(val) ? val : null);
+          if (Number.isFinite(val)) rawDiseaseVals.push(val);
+        });
+
+        const dMin = rawDiseaseVals.length > 0 ? Math.min(...rawDiseaseVals) : 0;
+        const dMax = rawDiseaseVals.length > 0 ? Math.max(...rawDiseaseVals) : 1;
+        const dRange = Math.max(dMax - dMin, 1);
 
         const socioValues = Array.from(socioMunicipioValues.values()).map((item) => item.value).filter((value) => Number.isFinite(value));
         const socioMean = socioValues.length > 0 ? socioValues.reduce((acc, n) => acc + n, 0) / socioValues.length : 55;
@@ -2702,9 +2679,12 @@
             ? pts.reduce((acc, p) => [acc[0] + p[0], acc[1] + p[1]], [0, 0]).map((v) => v / pts.length)
             : [minX, minY];
           const centroid = project(centroidGeo);
-          const noise = ((idx * 37 + 13) % 100) / 100;
 
-          const diseaseIntensity = clamp01(diseaseBase * 0.63 + socioNormBase * 0.22 + noise * 0.15);
+          const diseaseVal = featureDiseaseMap.get(idx);
+          const diseaseNorm = diseaseVal !== null ? clamp01((diseaseVal - dMin) / dRange) : null;
+
+          const noise = ((idx * 37 + 13) % 100) / 100;
+          const diseaseIntensity = diseaseNorm !== null ? diseaseNorm : clamp01(diseaseBase * 0.63 + socioNormBase * 0.22 + noise * 0.15);
           const climateIntensity = clamp01(climateBase * 0.68 + (1 - socioNormBase) * 0.2 + (1 - noise) * 0.12);
           const combinedIntensity = clamp01(diseaseIntensity * 0.58 + climateIntensity * 0.42);
 
@@ -2712,42 +2692,117 @@
             rings,
             centroid,
             municipioName: getFeatureMunicipioName(feature),
+            diseaseValue: diseaseVal,
+            diseaseNorm,
             diseaseIntensity,
             climateIntensity,
             combinedIntensity
           };
         });
 
-        return { features };
+        return { features, dMin, dMax };
+      }
+
+      // Retorna a cor de preenchimento coroplético baseada no valor normalizado (0–1) ou null para sem dado
+      function choroplethFill(norm) {
+        if (norm === null) {
+          return { fill: "rgba(224, 218, 238, 0.88)", stroke: "rgba(165, 148, 195, 0.65)", lw: 0.6 };
+        }
+        // Rampa: lavanda clara (0) → roxo profundo (1), coerente com a paleta da plataforma
+        const ramp = [
+          [238, 232, 252],
+          [210, 192, 240],
+          [168, 132, 220],
+          [110, 65, 178],
+          [58, 18, 118]
+        ];
+        const t = clamp01(norm) * (ramp.length - 1);
+        const lo = Math.floor(t);
+        const hi = Math.min(lo + 1, ramp.length - 1);
+        const f = t - lo;
+        const [r1, g1, b1] = ramp[lo];
+        const [r2, g2, b2] = ramp[hi];
+        const r = Math.round(r1 + (r2 - r1) * f);
+        const g = Math.round(g1 + (g2 - g1) * f);
+        const b = Math.round(b1 + (b2 - b1) * f);
+        const alpha = 0.72 + norm * 0.24;
+        const strokeAlpha = norm > 0.4 ? "0.45" : "0.35";
+        return {
+          fill: "rgba(" + r + "," + g + "," + b + "," + alpha.toFixed(2) + ")",
+          stroke: "rgba(60,20,110," + strokeAlpha + ")",
+          lw: 0.7
+        };
+      }
+
+      // Desenha legenda coroplética no canto inferior esquerdo do canvas
+      function drawChoroplethLegend(ctx, width, height, dMin, dMax) {
+        const steps = 5;
+        const swW = 22;
+        const swH = 14;
+        const gap = 4;
+        const textOffset = 30;
+        const boxPad = 10;
+        const lineH = swH + gap;
+        const titleH = 18;
+        const boxH = titleH + steps * lineH + boxPad * 2;
+        const boxW = 200;
+        const x = 14;
+        const y = height - boxH - 14;
+
+        ctx.fillStyle = "rgba(248, 244, 255, 0.92)";
+        ctx.strokeStyle = "rgba(140, 100, 180, 0.4)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(x, y, boxW, boxH, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#2c1252";
+        ctx.font = "bold 11px Trebuchet MS, sans-serif";
+        ctx.fillText("Casos — " + selectedDisease.name.slice(0, 26), x + boxPad, y + boxPad + 11);
+
+        for (let i = 0; i < steps; i++) {
+          const norm = i / (steps - 1);
+          const value = dMin + norm * (dMax - dMin);
+          const style = choroplethFill(norm);
+          const rowY = y + boxPad + titleH + i * lineH;
+
+          ctx.fillStyle = style.fill;
+          ctx.strokeStyle = style.stroke;
+          ctx.lineWidth = 0.6;
+          ctx.fillRect(x + boxPad, rowY, swW, swH);
+          ctx.strokeRect(x + boxPad, rowY, swW, swH);
+
+          ctx.fillStyle = "#352060";
+          ctx.font = "10px Trebuchet MS, sans-serif";
+          const label = value >= 1000
+            ? Math.round(value / 1000) + "k"
+            : Math.round(value).toString();
+          ctx.fillText(label, x + boxPad + textOffset, rowY + swH - 2);
+        }
       }
 
       function drawBasePolygons(ctx, projected) {
-        const diseaseColor = diseaseOverlayColor[selectedDisease.name] || "#8a58cd";
-        ctx.fillStyle = diseaseColor;
-        ctx.globalAlpha = 0.22;
-        ctx.strokeStyle = "rgba(246, 233, 255, 0.92)";
-        ctx.lineWidth = 1.2;
+        ctx.globalAlpha = 1;
 
         projected.features.forEach((feature) => {
+          const style = choroplethFill(feature.diseaseNorm !== undefined ? feature.diseaseNorm : null);
+          ctx.fillStyle = style.fill;
+          ctx.strokeStyle = style.stroke;
+          ctx.lineWidth = style.lw;
+
           feature.rings.forEach((ring) => {
-            if (!ring || ring.length === 0) {
-              return;
-            }
+            if (!ring || ring.length === 0) return;
             ctx.beginPath();
             ring.forEach((coord, idx) => {
-              if (idx === 0) {
-                ctx.moveTo(coord[0], coord[1]);
-              } else {
-                ctx.lineTo(coord[0], coord[1]);
-              }
+              if (idx === 0) ctx.moveTo(coord[0], coord[1]);
+              else ctx.lineTo(coord[0], coord[1]);
             });
             ctx.closePath();
             ctx.fill();
             ctx.stroke();
           });
         });
-
-        ctx.globalAlpha = 1;
       }
 
       function drawGaussianField(ctx, points, colorStops, radiusPx, alphaScale, getter) {
@@ -3059,13 +3114,8 @@
         const mode = options.mode || selectedDemoMode;
 
         ctx.clearRect(0, 0, width, height);
-        const bg = ctx.createLinearGradient(0, 0, width, height);
-        bg.addColorStop(0, "#f7fbff");
-        bg.addColorStop(1, "#f2ecff");
-        ctx.fillStyle = bg;
+        ctx.fillStyle = "#f6f3fa";
         ctx.fillRect(0, 0, width, height);
-
-        drawClimatePatterns(ctx, width, height);
 
         const projected = buildProjectedSpatialData(featureCollection, width, height);
         if (!projected) {
@@ -3092,7 +3142,7 @@
 
         // Sempre reforça no demonstrador as camadas escolhidas (doença + clima + sociodemográfico)
         renderPersistentSelectionOverlay(ctx, projected);
-        drawDemonstratorSelectionLegend(ctx, width, height);
+        drawChoroplethLegend(ctx, width, height, projected.dMin, projected.dMax);
 
         const combined = projected.features.map((item) => item.combinedIntensity);
         const mean = combined.reduce((acc, value) => acc + value, 0) / Math.max(combined.length, 1);
@@ -3101,9 +3151,12 @@
         const max = Math.max(...combined, 0);
         const min = Math.min(...combined, 0);
 
-        ctx.fillStyle = "rgba(243, 236, 255, 0.92)";
+        ctx.fillStyle = "rgba(255, 252, 255, 0.90)";
         ctx.fillRect(10, 10, width - 20, 74);
-        ctx.fillStyle = "#352652";
+        ctx.strokeStyle = "rgba(160, 120, 200, 0.35)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(10, 10, width - 20, 74);
+        ctx.fillStyle = "#2c1252";
         ctx.font = "bold 16px Trebuchet MS";
         ctx.fillText("Demonstrador - " + describeMode(mode), 16, 33);
         const years = Array.from(selectedYears).sort((a, b) => a - b);
