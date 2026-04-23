@@ -124,6 +124,41 @@
         gap: 10px;
       }
 
+      .year-grid {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 8px;
+        max-height: 192px;
+        overflow: auto;
+        padding-right: 4px;
+      }
+
+      .year-chip {
+        border: 1px solid rgba(216, 185, 255, 0.45);
+        background: rgba(255, 255, 255, 0.06);
+        color: #f7ecff;
+        border-radius: 10px;
+        padding: 6px 4px;
+        text-align: center;
+        font-size: 11px;
+        cursor: pointer;
+        transition: 120ms ease;
+      }
+
+      .year-chip:hover,
+      .year-chip.active {
+        background: rgba(186, 110, 255, 0.36);
+        border-color: rgba(248, 227, 255, 0.85);
+        transform: translateY(-1px);
+      }
+
+      .year-actions {
+        margin-top: 8px;
+        display: flex;
+        gap: 8px;
+      }
+
       .chip {
         appearance: none;
         border: 1px solid rgba(227, 202, 255, 0.55);
@@ -1253,6 +1288,16 @@
           </article>
 
           <article class="card">
+            <h2>Ano de análise</h2>
+            <p>Seleção múltipla de 2000 até 2026.</p>
+            <div class="year-grid" id="yearButtons"></div>
+            <div class="year-actions">
+              <button class="secondary" id="selectAllYearsBtn" type="button">Selecionar todos</button>
+              <button class="secondary" id="clearYearsBtn" type="button">Limpar anos</button>
+            </div>
+          </article>
+
+          <article class="card">
             <h2>Variáveis climáticas</h2>
             <p>Seleção múltipla habilitada.</p>
             <div class="chip-grid" id="climateButtons">
@@ -1436,6 +1481,9 @@
       const socioScopeSelect = document.getElementById("socioScopeSelect");
       const applySocioBtn = document.getElementById("applySocioBtn");
       const socioSourceInfo = document.getElementById("socioSourceInfo");
+      const yearButtons = document.getElementById("yearButtons");
+      const selectAllYearsBtn = document.getElementById("selectAllYearsBtn");
+      const clearYearsBtn = document.getElementById("clearYearsBtn");
       const authModal = document.getElementById("authModal");
       const contactNameInput = document.getElementById("contactNameInput");
       const contactEmailInput = document.getElementById("contactEmailInput");
@@ -1568,6 +1616,7 @@
         note: "Agravos neurologicos e malformacoes congenitas em recem-nascidos."
       };
       const selectedClimates = new Set();
+      const selectedYears = new Set();
       let selectedSocioVariable = "escolaridade";
       let selectedSocioScope = "municipal";
       let pendingExportType = null;
@@ -1967,6 +2016,8 @@
       function updateSelectionStatus() {
         const climates = Array.from(selectedClimates);
         const climateText = climates.length > 0 ? climates.join(", ") : "nenhuma variavel selecionada";
+        const years = Array.from(selectedYears).sort((a, b) => a - b);
+        const yearsText = years.length > 0 ? years.join(", ") : "nenhum ano selecionado";
         const socioLabel = socioMetadata[selectedSocioVariable].label;
         const socioScopeLabel = selectedSocioScope === "geres" ? "GERES" : "Municipal";
         statusBox.innerHTML =
@@ -1976,6 +2027,8 @@
           selectedDisease.agent +
           "</strong><small>Clima: " +
           climateText +
+          "</small><small>Anos: " +
+          yearsText +
           "</small><small>Fonte agravo: " +
           diseaseDataSource +
           "</small><small>Sociodemográfico: " +
@@ -2054,6 +2107,12 @@
             });
           });
         }
+
+        const years = Array.from(selectedYears).sort((a, b) => a - b);
+        rows.push({
+          label: "Anos de análise: " + (years.length > 0 ? years.join(", ") : "nenhum"),
+          status: years.length > 0 ? "ativo" : "aguardando"
+        });
 
         rows.push({
           label: "Sociodemográfico: " + socioMetadata[selectedSocioVariable].label + " (" + (selectedSocioScope === "geres" ? "GERES" : "Municipal") + ")",
@@ -3049,9 +3108,10 @@
         ctx.fillStyle = "#352652";
         ctx.font = "bold 16px Trebuchet MS";
         ctx.fillText("Demonstrador - " + describeMode(mode), 16, 33);
+        const years = Array.from(selectedYears).sort((a, b) => a - b);
         ctx.font = "12px Trebuchet MS";
         ctx.fillText("Agravos: " + selectedDisease.name + " | Clima: " + (Array.from(selectedClimates).join(", ") || "nenhuma"), 16, 52);
-        ctx.fillText("Demografia: " + socioMetadata[selectedSocioVariable].label + " (" + selectedSocioScope + ")", 16, 69);
+        ctx.fillText("Demografia: " + socioMetadata[selectedSocioVariable].label + " (" + selectedSocioScope + ") | Anos: " + (years.join(", ") || "nenhum"), 16, 69);
 
         lastDemoImageDataUrl = canvas.toDataURL("image/png");
 
@@ -3465,12 +3525,14 @@
 
       function buildPayload(password) {
         const municipio = municipioSelect.options[municipioSelect.selectedIndex]?.text || "Todos os municipios";
+        const years = Array.from(selectedYears).sort((a, b) => a - b);
         return {
           password,
           requester_name: contactNameInput.value.trim(),
           requester_email: contactEmailInput.value.trim(),
           requester_role: selectedRequesterRole || "nao informado",
           disease: selectedDisease.name,
+          analysis_years: years,
           climates: Array.from(selectedClimates),
           sociodemographic_variable: socioMetadata[selectedSocioVariable].label,
           sociodemographic_scope: selectedSocioScope,
@@ -3784,6 +3846,48 @@
         });
       });
 
+      function renderYearButtons() {
+        if (!yearButtons) {
+          return;
+        }
+
+        const html = [];
+        for (let year = 2000; year <= 2026; year += 1) {
+          const isActive = selectedYears.has(year);
+          html.push(
+            '<button class="year-chip' + (isActive ? ' active' : '') + '" data-year="' + year + '" type="button">' + year + '</button>'
+          );
+        }
+        yearButtons.innerHTML = html.join("");
+
+        yearButtons.querySelectorAll(".year-chip").forEach((button) => {
+          button.addEventListener("click", () => {
+            const year = Number(button.dataset.year);
+            if (selectedYears.has(year)) {
+              selectedYears.delete(year);
+            } else {
+              selectedYears.add(year);
+            }
+            renderYearButtons();
+            updateSelectionStatus();
+          });
+        });
+      }
+
+      selectAllYearsBtn.addEventListener("click", () => {
+        for (let year = 2000; year <= 2026; year += 1) {
+          selectedYears.add(year);
+        }
+        renderYearButtons();
+        updateSelectionStatus();
+      });
+
+      clearYearsBtn.addEventListener("click", () => {
+        selectedYears.clear();
+        renderYearButtons();
+        updateSelectionStatus();
+      });
+
       socioVariableSelect.addEventListener("change", () => {
         selectedSocioVariable = socioVariableSelect.value;
         updateSelectionStatus();
@@ -3929,6 +4033,8 @@
       setTimeout(scheduleMapBootstrap, 80);
 
       fillGeresSelect();
+      selectedYears.add(2026);
+      renderYearButtons();
       // Auto-seleciona Precipitacao como variável padrão inicial
       selectedClimates.add("Precipitacao");
       const defaultClimateBtn = document.querySelector('#climateButtons .chip[data-name="Precipitacao"]');

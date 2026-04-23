@@ -3,6 +3,7 @@ import io
 import json
 import os
 import re
+import zipfile
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlencode
@@ -10,8 +11,11 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
 from flask import Flask, jsonify, render_template, request, send_file
+import geopandas as gpd
+import pandas as pd
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
@@ -148,6 +152,193 @@ def _resolve_disease_csv_path(disease_key: str) -> Path | None:
                 return path
 
     return None
+
+
+def _resolve_workspace_file(path_value: str) -> Path | None:
+    candidate = Path(path_value)
+    if candidate.is_absolute() and candidate.exists() and candidate.is_file():
+        return candidate
+
+    relative = Path(__file__).parent / candidate
+    if relative.exists() and relative.is_file():
+        return relative
+    return None
+
+
+def _save_uploaded_file(upload, destination_dir: Path, prefix: str) -> Path:
+    safe_name = secure_filename(upload.filename or "upload.bin")
+    saved_path = destination_dir / f"{prefix}_{safe_name}"
+    upload.save(saved_path)
+    return saved_path
+
+
+def _resolve_uploaded_municipalities_file(uploaded_path: Path, extraction_dir: Path) -> Path:
+    suffix = uploaded_path.suffix.lower()
+    if suffix in {".geojson", ".json", ".gpkg", ".shp"}:
+        return uploaded_path
+
+    if suffix != ".zip":
+        raise ValueError("Arquivo geoespacial invalido. Use GeoJSON, SHP ou ZIP contendo shapefile.")
+
+    extraction_dir.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(uploaded_path, "r") as zip_ref:
+        zip_ref.extractall(extraction_dir)
+
+    geojson_candidates = sorted(extraction_dir.rglob("*.geojson"))
+    if geojson_candidates:
+        return geojson_candidates[0]
+
+    shp_candidates = sorted(extraction_dir.rglob("*.shp"))
+    if shp_candidates:
+        for shp_path in shp_candidates:
+            base = shp_path.with_suffix("")
+            missing_parts = [
+                suffix
+                for suffix in (".dbf", ".shx")
+                if not (base.with_suffix(suffix)).exists()
+            ]
+            if missing_parts:
+                missing_text = ", ".join(missing_parts)
+                raise ValueError(
+                    "ZIP com shapefile incompleto. Faltam arquivos obrigatorios para "
+                    f"{shp_path.name}: {missing_text}"
+                )
+        return shp_candidates[0]
+
+    raise ValueError("ZIP enviado nao contem arquivo .shp ou .geojson.")
+
+
+def _parse_independent_vars_form(form) -> list[str]:
+    listed = [str(value).strip() for value in form.getlist("independent_vars") if str(value).strip()]
+    if listed:
+        return listed
+
+    csv_value = str(form.get("independent_vars", "")).strip()
+    if not csv_value:
+        return []
+    return [item.strip() for item in csv_value.split(",") if item.strip()]
+
+
+def _build_gwr_api_response(result, static_root: Path) -> dict[str, object]:
+    timestamp = int(datetime.utcnow().timestamp())
+    maps = {
+        key: f"/static/{path.relative_to(static_root).as_posix()}?v={timestamp}"
+        for key, path in result.map_paths.items()
+    }
+
+    response: dict[str, object] = {
+        "ok": True,
+        "dependent_var": result.dependent_var,
+        "independent_vars": result.independent_vars,
+        "records_used": result.records_used,
+        "gwr_bandwidth": result.gwr_bandwidth,
+        "maps": maps,
+    }
+    if result.joined_data_path is not None:
+        response["joined_geojson"] = (
+            f"/static/{result.joined_data_path.relative_to(static_root).as_posix()}?v={timestamp}"
+        )
+    return response
+
+
+def _normalize_colname(value: str) -> str:
+    return re.sub(r"[^a-z0-9_]+", "", str(value).strip().lower().replace(" ", "_"))
+
+
+def _read_table_preview(path: Path) -> pd.DataFrame:
+    if path.suffix.lower() in {".xlsx", ".xls"}:
+        return pd.read_excel(path, nrows=5)
+    return pd.read_csv(path, sep=None, engine="python", nrows=5)
+
+
+def _find_column_case_insensitive(columns: list[str], expected: str) -> str | None:
+    by_norm = {_normalize_colname(col): col for col in columns}
+    return by_norm.get(_normalize_colname(expected))
+
+
+def _validate_gwr_input_schema(
+    table_path: Path,
+    municipalities_path: Path,
+    dependent_var: str,
+    independent_vars: list[str],
+    data_ibge_column: str | None,
+    shape_ibge_column: str | None,
+) -> tuple[list[str], str | None, str | None]:
+    table_df = _read_table_preview(table_path)
+    if table_df.empty:
+        raise ValueError("Arquivo tabular enviado esta vazio.")
+
+    table_cols = [str(col) for col in table_df.columns]
+    resolved_dep = _find_column_case_insensitive(table_cols, dependent_var)
+    if not resolved_dep:
+        raise ValueError(f"Variavel dependente nao encontrada no tabular: {dependent_var}")
+
+    resolved_indep: list[str] = []
+    missing_indep: list[str] = []
+    for var in independent_vars:
+        hit = _find_column_case_insensitive(table_cols, var)
+        if not hit:
+            missing_indep.append(var)
+        else:
+            resolved_indep.append(hit)
+
+    if missing_indep:
+        missing_text = ", ".join(missing_indep)
+        raise ValueError(f"Variaveis independentes ausentes no tabular: {missing_text}")
+
+    table_ibge_candidates = {
+        "codigo_ibge",
+        "cod_ibge",
+        "ibge",
+        "code_muni",
+        "cod_mun",
+        "cd_mun",
+        "geocodigo",
+        "id_municipio",
+    }
+    muni_ibge_candidates = {
+        "code_muni",
+        "codigo_ibge",
+        "cod_ibge",
+        "cd_mun",
+        "cod_mun",
+        "geocodigo",
+        "id",
+    }
+
+    resolved_table_ibge = None
+    if data_ibge_column:
+        resolved_table_ibge = _find_column_case_insensitive(table_cols, data_ibge_column)
+        if not resolved_table_ibge:
+            raise ValueError(f"Coluna IBGE do tabular nao encontrada: {data_ibge_column}")
+    else:
+        by_norm = {_normalize_colname(col): col for col in table_cols}
+        for candidate in table_ibge_candidates:
+            if candidate in by_norm:
+                resolved_table_ibge = by_norm[candidate]
+                break
+
+    if resolved_table_ibge is None:
+        raise ValueError("Nao foi possivel detectar coluna IBGE no arquivo tabular.")
+
+    municipalities_df = gpd.read_file(municipalities_path, rows=5)
+    muni_cols = [str(col) for col in municipalities_df.columns]
+    resolved_shape_ibge = None
+    if shape_ibge_column:
+        resolved_shape_ibge = _find_column_case_insensitive(muni_cols, shape_ibge_column)
+        if not resolved_shape_ibge:
+            raise ValueError(f"Coluna IBGE do geoespacial nao encontrada: {shape_ibge_column}")
+    else:
+        by_norm = {_normalize_colname(col): col for col in muni_cols}
+        for candidate in muni_ibge_candidates:
+            if candidate in by_norm:
+                resolved_shape_ibge = by_norm[candidate]
+                break
+
+    if resolved_shape_ibge is None:
+        raise ValueError("Nao foi possivel detectar coluna IBGE no arquivo geoespacial.")
+
+    return resolved_indep, resolved_table_ibge, resolved_shape_ibge
 
 
 def _row_value(row: dict, keys: list[str]) -> str:
@@ -422,10 +613,11 @@ def _check_password(password: str) -> bool:
     return password == expected
 
 
-def _parse_payload() -> tuple[str, list[str], str, str, str, str, str, str, str]:
+def _parse_payload() -> tuple[str, list[str], list[int], str, str, str, str, str, str, str]:
     payload = request.get_json(silent=True) or {}
     disease = payload.get("disease", "Nao informado")
     climates = payload.get("climates", [])
+    analysis_years = payload.get("analysis_years", [])
     geres = payload.get("geres", "Todas as GERES")
     municipio = payload.get("municipio", "Todos os municipios")
     socio_variable = payload.get("sociodemographic_variable", "Nao informado")
@@ -436,6 +628,7 @@ def _parse_payload() -> tuple[str, list[str], str, str, str, str, str, str, str]
     return (
         disease,
         climates,
+        analysis_years,
         geres,
         municipio,
         socio_variable,
@@ -465,8 +658,9 @@ def export_pdf():
     if not _check_password(payload.get("password", "")):
         return jsonify({"message": "Acesso negado"}), 403
 
-    disease, climates, geres, municipio, socio_variable, socio_scope, requester_name, requester_email, requester_role = _parse_payload()
+    disease, climates, analysis_years, geres, municipio, socio_variable, socio_scope, requester_name, requester_email, requester_role = _parse_payload()
     climates_text = ", ".join(climates) if climates else "Nenhuma variavel selecionada"
+    years_text = ", ".join(str(y) for y in analysis_years) if analysis_years else "Nenhum ano selecionado"
 
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
@@ -477,12 +671,13 @@ def export_pdf():
     pdf.drawString(50, 770, f"Data/Hora: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
     pdf.drawString(50, 745, f"Doenca selecionada: {disease}")
     pdf.drawString(50, 720, f"Variaveis climaticas: {climates_text}")
-    pdf.drawString(50, 695, f"GERES: {geres}")
-    pdf.drawString(50, 670, f"Municipio: {municipio}")
-    pdf.drawString(50, 645, f"Sociodemografico: {socio_variable} ({socio_scope})")
-    pdf.drawString(50, 620, f"Solicitante: {requester_name} ({requester_role})")
-    pdf.drawString(50, 595, f"Email para retorno: {requester_email}")
-    pdf.drawString(50, 570, "Observacao: Documento protegido por autenticacao no portal.")
+    pdf.drawString(50, 695, f"Anos de analise: {years_text}")
+    pdf.drawString(50, 670, f"GERES: {geres}")
+    pdf.drawString(50, 645, f"Municipio: {municipio}")
+    pdf.drawString(50, 620, f"Sociodemografico: {socio_variable} ({socio_scope})")
+    pdf.drawString(50, 595, f"Solicitante: {requester_name} ({requester_role})")
+    pdf.drawString(50, 570, f"Email para retorno: {requester_email}")
+    pdf.drawString(50, 545, "Observacao: Documento protegido por autenticacao no portal.")
     pdf.showPage()
     pdf.save()
 
@@ -501,12 +696,13 @@ def export_spreadsheet():
     if not _check_password(payload.get("password", "")):
         return jsonify({"message": "Acesso negado"}), 403
 
-    disease, climates, geres, municipio, socio_variable, socio_scope, requester_name, requester_email, requester_role = _parse_payload()
+    disease, climates, analysis_years, geres, municipio, socio_variable, socio_scope, requester_name, requester_email, requester_role = _parse_payload()
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["campo", "valor"])
     writer.writerow(["data_utc", datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")])
     writer.writerow(["doenca", disease])
+    writer.writerow(["anos_analise", " | ".join(str(y) for y in analysis_years) if analysis_years else "nenhum"])
     writer.writerow(["geres", geres])
     writer.writerow(["municipio", municipio])
     writer.writerow(["variaveis_climaticas", " | ".join(climates) if climates else "nenhuma"])
@@ -712,6 +908,147 @@ def generate_prepared_heatmap_overlay() -> tuple[dict, int]:
             },
         }
     ), 200
+
+
+@app.post("/api/maps/epidemiological-gwr")
+def generate_epidemiological_gwr_maps_api() -> tuple[dict, int]:
+    payload = request.get_json(silent=True) or {}
+
+    table_path_raw = str(payload.get("table_path", "")).strip()
+    municipalities_path_raw = str(payload.get("municipalities_path", "")).strip()
+    dependent_var = str(payload.get("dependent_var", "")).strip()
+    independent_vars = payload.get("independent_vars", [])
+
+    if not table_path_raw or not municipalities_path_raw or not dependent_var:
+        return {
+            "error": "Campos obrigatorios ausentes",
+            "required": ["table_path", "municipalities_path", "dependent_var", "independent_vars"],
+        }, 400
+
+    if not isinstance(independent_vars, list) or not independent_vars:
+        return {"error": "'independent_vars' deve ser uma lista nao vazia"}, 400
+
+    table_path = _resolve_workspace_file(table_path_raw)
+    municipalities_path = _resolve_workspace_file(municipalities_path_raw)
+
+    if not table_path:
+        return {"error": "Arquivo tabular nao encontrado", "table_path": table_path_raw}, 404
+    if not municipalities_path:
+        return {"error": "Arquivo geoespacial nao encontrado", "municipalities_path": municipalities_path_raw}, 404
+
+    output_dir = Path(__file__).parent / "static" / "maps"
+
+    try:
+        from scripts.generate_epidemiological_gwr_maps import generate_epidemiological_gwr_maps
+
+        result = generate_epidemiological_gwr_maps(
+            tabular_data_path=table_path,
+            municipalities_path=municipalities_path,
+            dependent_var=dependent_var,
+            independent_vars=[str(v) for v in independent_vars],
+            output_dir=output_dir,
+            data_ibge_column=(str(payload.get("data_ibge_column")).strip() or None),
+            shape_ibge_column=(str(payload.get("shape_ibge_column")).strip() or None),
+            classification_scheme=str(payload.get("classification_scheme", "natural_breaks")).strip(),
+            n_classes=int(payload.get("n_classes", 5)),
+            target_crs=str(payload.get("target_crs", "EPSG:31985")).strip(),
+            dpi=int(payload.get("dpi", 300)),
+            title_prefix=str(payload.get("title_prefix", "Pernambuco - Analise Espacial Epidemiologica")).strip(),
+        )
+    except ValueError as error:
+        return {"error": str(error)}, 400
+    except Exception as error:  # pragma: no cover - erro em runtime
+        return {
+            "error": "Falha ao executar pipeline epidemiologica GWR",
+            "details": str(error),
+        }, 500
+
+    static_root = Path(__file__).parent / "static"
+    return jsonify(_build_gwr_api_response(result, static_root)), 200
+
+
+@app.post("/api/maps/epidemiological-gwr-upload")
+def generate_epidemiological_gwr_maps_upload_api() -> tuple[dict, int]:
+    table_file = request.files.get("table_file")
+    municipalities_file = request.files.get("municipalities_file")
+
+    dependent_var = str(request.form.get("dependent_var", "")).strip()
+    independent_vars = _parse_independent_vars_form(request.form)
+
+    if not table_file or not municipalities_file or not dependent_var:
+        return {
+            "error": "Campos obrigatorios ausentes",
+            "required": ["table_file", "municipalities_file", "dependent_var", "independent_vars"],
+        }, 400
+
+    if not independent_vars:
+        return {"error": "'independent_vars' deve ser informado no form-data"}, 400
+
+    run_stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+    uploads_root = Path(__file__).parent / "data" / "uploads" / run_stamp
+    uploads_root.mkdir(parents=True, exist_ok=True)
+
+    table_path = _save_uploaded_file(table_file, uploads_root, "tabular")
+    municipalities_raw_path = _save_uploaded_file(municipalities_file, uploads_root, "municipios")
+
+    try:
+        municipalities_path = _resolve_uploaded_municipalities_file(
+            municipalities_raw_path,
+            uploads_root / "municipios_extraidos",
+        )
+    except ValueError as error:
+        return {"error": str(error)}, 400
+
+    data_ibge_form = (str(request.form.get("data_ibge_column", "")).strip() or None)
+    shape_ibge_form = (str(request.form.get("shape_ibge_column", "")).strip() or None)
+
+    try:
+        resolved_independent_vars, resolved_data_ibge_col, resolved_shape_ibge_col = _validate_gwr_input_schema(
+            table_path=table_path,
+            municipalities_path=municipalities_path,
+            dependent_var=dependent_var,
+            independent_vars=independent_vars,
+            data_ibge_column=data_ibge_form,
+            shape_ibge_column=shape_ibge_form,
+        )
+    except ValueError as error:
+        return {"error": str(error)}, 400
+
+    output_dir = Path(__file__).parent / "static" / "maps"
+
+    try:
+        from scripts.generate_epidemiological_gwr_maps import generate_epidemiological_gwr_maps
+
+        result = generate_epidemiological_gwr_maps(
+            tabular_data_path=table_path,
+            municipalities_path=municipalities_path,
+            dependent_var=dependent_var,
+            independent_vars=resolved_independent_vars,
+            output_dir=output_dir,
+            data_ibge_column=resolved_data_ibge_col,
+            shape_ibge_column=resolved_shape_ibge_col,
+            classification_scheme=str(request.form.get("classification_scheme", "natural_breaks")).strip(),
+            n_classes=int(request.form.get("n_classes", "5")),
+            target_crs=str(request.form.get("target_crs", "EPSG:31985")).strip(),
+            dpi=int(request.form.get("dpi", "300")),
+            title_prefix=str(request.form.get("title_prefix", "Pernambuco - Analise Espacial Epidemiologica")).strip(),
+        )
+    except ValueError as error:
+        return {"error": str(error)}, 400
+    except Exception as error:  # pragma: no cover - erro em runtime
+        return {
+            "error": "Falha ao executar pipeline epidemiologica GWR via upload",
+            "details": str(error),
+        }, 500
+
+    static_root = Path(__file__).parent / "static"
+    response = _build_gwr_api_response(result, static_root)
+    response["uploaded_inputs"] = {
+        "table_file": str(table_path.relative_to(Path(__file__).parent)),
+        "municipalities_file": str(municipalities_path.relative_to(Path(__file__).parent)),
+    }
+
+    return jsonify(response), 200
 
 
 if __name__ == "__main__":
