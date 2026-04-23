@@ -199,15 +199,14 @@
       }
 
       .geo-pin {
-        width: 290px;
-        height: 190px;
+        width: 320px;
+        height: 200px;
         position: relative;
         cursor: pointer;
-        border: 1px solid rgba(216, 178, 255, 0.35);
         border-radius: 18px;
-        background: radial-gradient(circle at 8% 12%, rgba(215, 54, 255, 0.22) 0%, rgba(54, 24, 84, 0.78) 58%, rgba(17, 8, 31, 0.94) 100%);
-        padding: 12px;
-        box-shadow: 0 14px 32px rgba(6, 0, 18, 0.45);
+        background: transparent;
+        padding: 0;
+        box-shadow: 0 14px 32px rgba(6, 0, 18, 0.35);
         display: grid;
         place-items: center;
       }
@@ -216,6 +215,13 @@
         width: 100%;
         height: 100%;
         object-fit: contain;
+      }
+
+      .brand-wordmark {
+        width: min(100%, 640px);
+        height: auto;
+        display: block;
+        margin: 0;
       }
 
       .geo-pin .pin-shape {
@@ -1160,12 +1166,11 @@
       <section class="hero">
         <div class="robot-wrap">
           <div class="geo-pin" id="techRobot" aria-label="Marca original EpiGeoData">
-            <img src="/static/brand/epigeodata-logo.svg" alt="Marca original EpiGeoData" />
+            <img src="/static/brand/epigeodata-logo-original.jpg" alt="Marca original EpiGeoData" />
           </div>
         </div>
         <div>
-          <h1 class="title">EPIGEODATA</h1>
-          <p class="tagline">POTENCIALIZANDO SOLUÇÕES</p>
+          <img class="brand-wordmark" src="/static/brand/epigeodata-logo-original.jpg" alt="EPIGEODATA - Potencializando Soluções" />
           <p class="subtitle">
             Painel geoespacial com sobreposição de mapas por doença, variáveis climáticas, GERES e município em tempo real.
           </p>
