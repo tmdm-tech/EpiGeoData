@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="260" viewBox="0 0 980 260" role="img" aria-label="Marca EpiGeoData">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7c4bff"/>
+      <stop offset="100%" stop-color="#e22dff"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f4e4ff"/>
+      <stop offset="100%" stop-color="#b57bff"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(10,18)">
+    <path d="M120 20 C70 20 28 60 28 110 C28 162 66 202 120 228 C174 202 212 162 212 110 C212 60 170 20 120 20Z" fill="url(#g1)"/>
+    <circle cx="120" cy="110" r="58" fill="#12061f"/>
+    <path d="M120 54 C150 54 174 78 174 108 C174 138 150 162 120 162 C90 162 66 138 66 108 C66 78 90 54 120 54Z" fill="none" stroke="url(#g2)" stroke-width="6"/>
+    <path d="M62 108 H178 M120 50 V166 M86 76 C98 84 104 96 104 108 C104 120 98 132 86 140 M154 76 C142 84 136 96 136 108 C136 120 142 132 154 140" fill="none" stroke="url(#g2)" stroke-width="4" stroke-linecap="round"/>
+  </g>
+
+  <text x="244" y="130" fill="url(#g1)" font-size="108" font-family="Orbitron, Rajdhani, Arial, sans-serif" font-weight="700" letter-spacing="1">EPIGEODATA</text>
+  <text x="246" y="182" fill="#f4e4ff" font-size="40" font-family="Julius Sans One, Rajdhani, Arial, sans-serif" letter-spacing="7">POTENCIALIZANDO SOLUÇÕES</text>
+</svg>
