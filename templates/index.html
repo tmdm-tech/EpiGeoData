@@ -1635,15 +1635,19 @@
       let legendControl = null;
       let gwrMarkerLayer = null;
       let lastProfessionalMapUrl = "";
+      let pernambucoCartographyCache = null;
       const institutionalProfessionalMapTitle = "EpiGeoData | Mapa Coropletico Cientifico - Pernambuco";
       const preparedHeatmapInputName = "municpios_pe";
 
       const diseaseApiKeyByName = {
         "Sindrome Congenita da Zika": "scz",
+        "Covid 19": "covid_19",
         Dengue: "dengue",
         Esquistossomose: "esquistossomose",
         Tuberculose: "tuberculose",
-        Chikungunya: "chikungunya"
+        Monkeypox: "monkeypox",
+        Chikungunya: "chikungunya",
+        "Febre Oropouche": "oropouche"
       };
 
       const aggravoBaseScore = {
@@ -1724,6 +1728,20 @@
         return diseaseApiKeyByName[diseaseName] || diseaseName.toLowerCase().replace(/\s+/g, "_");
       }
 
+      async function loadPernambucoCartographyBundle() {
+        if (pernambucoCartographyCache) {
+          return pernambucoCartographyCache;
+        }
+
+        const response = await fetch("/api/cartography/pernambuco");
+        if (!response.ok) {
+          throw new Error("Falha ao carregar cartografia local de Pernambuco");
+        }
+
+        pernambucoCartographyCache = await response.json();
+        return pernambucoCartographyCache;
+      }
+
       function parseDiseasePayload(payload) {
         const values = new Map();
         if (!payload || !payload.municipios || typeof payload.municipios !== "object") {
@@ -1759,7 +1777,7 @@
 
           const payload = await response.json();
           const values = parseDiseasePayload(payload);
-          const source = payload.source ? "CSV local (" + payload.source + ")" : "CSV local";
+          const source = payload.source_label || (payload.source ? "CSV local (" + payload.source + ")" : "DATASUS / estimativa");
           diseaseDataCache.set(key, { values, source });
           diseaseMunicipioValues = values;
           diseaseDataSource = source;
@@ -1819,10 +1837,28 @@
         if (municipioGeoCache.has(id)) {
           return municipioGeoCache.get(id);
         }
-        const response = await fetch(
-          "https://servicodados.ibge.gov.br/api/v3/malhas/municipios/" + id + "?formato=application/vnd.geo+json&qualidade=minima"
-        );
-        const geojson = await response.json();
+
+        let geojson = null;
+        try {
+          const bundle = await loadPernambucoCartographyBundle();
+          const feature = (bundle.municipalities?.features || []).find((item) => {
+            const code = String(item?.properties?.code_muni || "").replace(/\.0$/, "");
+            return code === String(id);
+          });
+          if (feature) {
+            geojson = { type: "FeatureCollection", features: [feature] };
+          }
+        } catch (_) {
+          // fallback externo apenas se a base local falhar
+        }
+
+        if (!geojson) {
+          const response = await fetch(
+            "https://servicodados.ibge.gov.br/api/v3/malhas/municipios/" + id + "?formato=application/vnd.geo+json&qualidade=minima"
+          );
+          geojson = await response.json();
+        }
+
         municipioGeoCache.set(id, geojson);
         return geojson;
       }
@@ -2336,33 +2372,6 @@
       }
 
       async function generateProfessionalOverlayMap(title) {
-        try {
-          const preparedResponse = await fetch("/api/maps/prepared-heatmap-overlay", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ input_file: preparedHeatmapInputName })
-          });
-
-          if (preparedResponse.ok) {
-            const preparedPayload = await preparedResponse.json();
-            const combinedMap = preparedPayload?.maps?.combined;
-            if (!combinedMap) {
-              throw new Error("Resposta sem mapa combinado da sobreposição");
-            }
-
-            lastProfessionalMapUrl = combinedMap;
-            professionalMapPreview.src = combinedMap;
-            professionalMapPreview.classList.add("visible");
-            professionalMapStatus.innerHTML =
-              "<strong>Cartografia:</strong> sobreposição científica gerada com arquivo preparado (" +
-              preparedPayload.input_file +
-              ")";
-            return;
-          }
-        } catch (_) {
-          // fallback para o mapa coroplético profissional já existente
-        }
-
         const diseaseKey = resolveDiseaseApiKey(selectedDisease.name);
 
         try {
@@ -2387,11 +2396,40 @@
           lastProfessionalMapUrl = payload.image_url;
           professionalMapPreview.src = payload.image_url;
           professionalMapPreview.classList.add("visible");
-          professionalMapStatus.innerHTML = "<strong>Cartografia:</strong> mapa científico gerado no backend";
+          professionalMapStatus.innerHTML = payload.has_local_data
+            ? "<strong>Cartografia:</strong> mapa epidemiológico científico gerado no backend"
+            : "<strong>Cartografia:</strong> mapa científico gerado sem série municipal local; layout mantido para consulta DATASUS";
+          return;
+        } catch (_) {
+          // fallback para sobreposição preparada apenas se o mapa principal falhar
+        }
+
+        try {
+          const preparedResponse = await fetch("/api/maps/prepared-heatmap-overlay", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ input_file: preparedHeatmapInputName })
+          });
+
+          if (!preparedResponse.ok) {
+            throw new Error("Falha ao gerar sobreposição preparada");
+          }
+
+          const preparedPayload = await preparedResponse.json();
+          const combinedMap = preparedPayload?.maps?.combined;
+          if (!combinedMap) {
+            throw new Error("Resposta sem mapa combinado da sobreposição");
+          }
+
+          lastProfessionalMapUrl = combinedMap;
+          professionalMapPreview.src = combinedMap;
+          professionalMapPreview.classList.add("visible");
+          professionalMapStatus.innerHTML =
+            "<strong>Cartografia:</strong> fallback de sobreposição preparado usado após falha no mapa epidemiológico";
         } catch (_) {
           lastProfessionalMapUrl = "";
           professionalMapPreview.classList.remove("visible");
-          professionalMapStatus.innerHTML = "<strong>Cartografia:</strong> falha ao gerar no backend";
+          professionalMapStatus.innerHTML = "<strong>Cartografia:</strong> falha ao gerar mapa no backend";
         }
       }
 
@@ -3787,12 +3825,23 @@
           attribution: "&copy; OpenStreetMap contributors"
         }).addTo(map);
 
-        const [estadoResponse, municipiosResponse] = await Promise.all([
-          fetch("https://servicodados.ibge.gov.br/api/v3/malhas/estados/26?formato=application/vnd.geo+json&qualidade=minima"),
-          fetch("https://servicodados.ibge.gov.br/api/v1/localidades/estados/26/municipios")
-        ]);
+        let estadoGeo = null;
+        let catalog = [];
 
-        const estadoGeo = await estadoResponse.json();
+        try {
+          const bundle = await loadPernambucoCartographyBundle();
+          estadoGeo = bundle.state;
+          catalog = bundle.catalog || [];
+        } catch (_) {
+          const [estadoResponse, municipiosResponse] = await Promise.all([
+            fetch("https://servicodados.ibge.gov.br/api/v3/malhas/estados/26?formato=application/vnd.geo+json&qualidade=minima"),
+            fetch("https://servicodados.ibge.gov.br/api/v1/localidades/estados/26/municipios")
+          ]);
+
+          estadoGeo = await estadoResponse.json();
+          catalog = await municipiosResponse.json();
+        }
+
         estadoGeoCache = estadoGeo;
 
         estadoLayer = L.geoJSON(estadoGeo, {
@@ -3805,7 +3854,7 @@
         }).addTo(map);
         map.fitBounds(estadoLayer.getBounds(), { padding: [18, 18] });
 
-        municipioCatalog = await municipiosResponse.json();
+        municipioCatalog = catalog;
         municipioCatalog.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
         applyMunicipioFilters();
       }

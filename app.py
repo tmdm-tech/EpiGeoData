@@ -4,6 +4,7 @@ import json
 import os
 import re
 import zipfile
+from functools import lru_cache
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlencode
@@ -23,6 +24,7 @@ REALTIME_CACHE: dict[str, tuple[float, dict]] = {}
 REALTIME_CACHE_TTL_SECONDS = 20 * 60
 DEFAULT_PROFESSIONAL_MAP_TITLE = "EpiGeoData | Mapa Coropletico Cientifico - Pernambuco"
 DEFAULT_PREPARED_HEATMAP_FILE = "municpios_pe"
+DEFAULT_PERNAMBUCO_CARTOGRAPHY = Path(__file__).parent / "data" / "municipios_pe_ibge.geojson"
 CLIMATE_SOURCE_BINDINGS = {
     "precipitacao": [
         "Precipitacao_INMET_ANA-20260416T16124",
@@ -44,6 +46,73 @@ CLIMATE_LAYER_BINDINGS = {
     "cobertura_vegetal": "cobertura_vegetal",
     "relevo_hidrografia": "queimadas",
 }
+
+DISEASE_CATALOG = {
+        "scz": {
+            "display_name": "Sindrome Congenita da Zika",
+            "aliases": ["scz", "sindrome_congenita_da_zika", "sindrome_congenita_zika", "zika"],
+            "csv_aliases": ["scz", "sindrome_congenita_da_zika", "sindrome_congenita_zika", "zika"],
+            "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/registro-de-eventos-em-saude-publica-resp-microcefalia/",
+            "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/tabcgi.exe?resp/cnv/resp",
+        },
+        "covid_19": {
+            "display_name": "Covid 19",
+            "aliases": ["covid_19", "covid19", "covid", "srag_covid"],
+            "csv_aliases": ["covid_19", "covid19", "covid"],
+            "datasus_page": "https://opendatasus.saude.gov.br/",
+            "datasus_tabnet": None,
+        },
+        "dengue": {
+            "display_name": "Dengue",
+            "aliases": ["dengue"],
+            "csv_aliases": ["dengue"],
+            "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/doencas-e-agravos-de-notificacao-de-2007-em-diante-sinan/",
+            "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/dengue",
+        },
+        "esquistossomose": {
+            "display_name": "Esquistossomose",
+            "aliases": ["esquistossomose", "esquisto"],
+            "csv_aliases": ["esquistossomose"],
+            "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/programa-de-controle-da-esquistossomose-pce/",
+            "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinan/pce/cnv/pce",
+        },
+        "tuberculose": {
+            "display_name": "Tuberculose",
+            "aliases": ["tuberculose", "tuberc"],
+            "csv_aliases": ["tuberculose"],
+            "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/tuberculose-desde-2001-sinan/",
+            "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/tabcgi.exe?sinannet/cnv/tuberc",
+        },
+        "monkeypox": {
+            "display_name": "Monkeypox",
+            "aliases": ["monkeypox", "mpox"],
+            "csv_aliases": ["monkeypox", "mpox"],
+            "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/doencas-e-agravos-de-notificacao-de-2007-em-diante-sinan/",
+            "datasus_tabnet": None,
+        },
+        "chikungunya": {
+            "display_name": "Chikungunya",
+            "aliases": ["chikungunya", "chikun"],
+            "csv_aliases": ["chikungunya"],
+            "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/doencas-e-agravos-de-notificacao-de-2007-em-diante-sinan/",
+            "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/chikun",
+        },
+        "oropouche": {
+            "display_name": "Febre Oropouche",
+            "aliases": ["oropouche", "febre_oropouche"],
+            "csv_aliases": ["oropouche", "febre_oropouche"],
+            "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/doencas-e-agravos-de-notificacao-de-2007-em-diante-sinan/",
+            "datasus_tabnet": None,
+        },
+}
+
+DISEASE_FILE_ALIASES = {
+    key: meta["csv_aliases"]
+    for key, meta in DISEASE_CATALOG.items()
+}
+
+DATASUS_CATALOG_CACHE: dict[str, tuple[float, dict]] = {}
+DATASUS_CATALOG_TTL_SECONDS = 6 * 60 * 60
 
 
 def _resolve_climate_source_file(filename: str) -> Path | None:
@@ -97,11 +166,33 @@ def _normalize_municipio_key(value: str) -> str:
     return value
 
 
+def _normalize_ibge_code(raw: str | int | float) -> str:
+    digits = re.sub(r"\D+", "", str(raw or ""))
+    if not digits:
+        return ""
+    if len(digits) >= 7:
+        return digits[:7]
+    return digits.zfill(7)
+
+
 def _normalize_header(value: str) -> str:
     value = str(value or "").strip().lower()
     value = re.sub(r"\s+", "_", value)
     value = re.sub(r"[^a-z0-9_]+", "", value)
     return value
+
+
+def _resolve_disease_key(disease_key: str) -> str | None:
+    token = _normalize_token(str(disease_key or ""))
+    if token in DISEASE_CATALOG:
+        return token
+
+    for key, meta in DISEASE_CATALOG.items():
+        aliases = {_normalize_token(alias) for alias in meta.get("aliases", [])}
+        if token in aliases:
+            return key
+
+    return None
 
 
 def _resolve_prepared_heatmap_file(filename: str = DEFAULT_PREPARED_HEATMAP_FILE) -> Path | None:
@@ -134,7 +225,8 @@ def _resolve_prepared_heatmap_file(filename: str = DEFAULT_PREPARED_HEATMAP_FILE
 
 
 def _resolve_disease_csv_path(disease_key: str) -> Path | None:
-    token = _normalize_token(disease_key)
+    resolved_key = _resolve_disease_key(disease_key)
+    token = resolved_key or _normalize_token(disease_key)
     aliases = DISEASE_FILE_ALIASES.get(token, [token])
 
     candidates = [
@@ -152,6 +244,120 @@ def _resolve_disease_csv_path(disease_key: str) -> Path | None:
                 return path
 
     return None
+
+
+def _probe_remote_source(url: str | None, timeout: int = 6) -> dict[str, object]:
+    if not url:
+        return {"url": None, "status": "indisponivel"}
+
+    try:
+        req = Request(url, headers={"User-Agent": "EpiGeoData/1.0"})
+        with urlopen(req, timeout=timeout) as response:
+            return {
+                "url": url,
+                "status": "disponivel",
+                "http_status": getattr(response, "status", 200),
+            }
+    except (URLError, HTTPError, TimeoutError) as error:
+        return {
+            "url": url,
+            "status": "indisponivel",
+            "http_status": getattr(error, "code", None),
+            "error": str(error),
+        }
+
+
+def _get_datasus_live_status(disease_key: str) -> dict[str, object]:
+    resolved_key = _resolve_disease_key(disease_key)
+    if not resolved_key:
+        return {
+            "checked_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "available": False,
+            "sources": [],
+        }
+
+    cached = DATASUS_CATALOG_CACHE.get(resolved_key)
+    now_ts = datetime.utcnow().timestamp()
+    if cached and (now_ts - cached[0] <= DATASUS_CATALOG_TTL_SECONDS):
+        return cached[1]
+
+    meta = DISEASE_CATALOG[resolved_key]
+    sources = [
+        _probe_remote_source(meta.get("datasus_page")),
+        _probe_remote_source(meta.get("datasus_tabnet")),
+    ]
+    payload = {
+        "checked_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "available": any(item.get("status") == "disponivel" for item in sources if item.get("url")),
+        "sources": [item for item in sources if item.get("url")],
+    }
+    DATASUS_CATALOG_CACHE[resolved_key] = (now_ts, payload)
+    return payload
+
+
+@lru_cache(maxsize=1)
+def _load_pernambuco_cartography() -> tuple[gpd.GeoDataFrame, dict, dict, list[dict[str, str]], Path]:
+    if not DEFAULT_PERNAMBUCO_CARTOGRAPHY.exists():
+        raise FileNotFoundError(
+            f"Cartografia de Pernambuco nao encontrada em {DEFAULT_PERNAMBUCO_CARTOGRAPHY.relative_to(Path(__file__).parent)}"
+        )
+
+    gdf = gpd.read_file(DEFAULT_PERNAMBUCO_CARTOGRAPHY)
+    gdf = gdf.copy()
+    gdf["code_muni"] = gdf["code_muni"].map(_normalize_ibge_code)
+    gdf["name_muni"] = gdf["name_muni"].astype(str).str.strip()
+
+    municipalities_geojson = json.loads(gdf.to_json())
+    state_gdf = gdf[["geometry"]].dissolve()
+    state_gdf["name"] = "Pernambuco"
+    state_geojson = json.loads(state_gdf.to_json())
+    catalog = [
+        {"id": row["code_muni"], "nome": row["name_muni"]}
+        for _, row in gdf[["code_muni", "name_muni"]].sort_values("name_muni").iterrows()
+    ]
+    return gdf, municipalities_geojson, state_geojson, catalog, DEFAULT_PERNAMBUCO_CARTOGRAPHY
+
+
+def _build_disease_payload(disease_key: str, include_municipios: bool = True) -> dict[str, object] | None:
+    resolved_key = _resolve_disease_key(disease_key)
+    if not resolved_key:
+        return None
+
+    meta = DISEASE_CATALOG[resolved_key]
+    values, path = _load_disease_csv(resolved_key)
+    nums = list(values.values()) if values else []
+    datasus_live = _get_datasus_live_status(resolved_key)
+    local_source = str(path.relative_to(Path(__file__).parent)) if path else None
+
+    payload: dict[str, object] = {
+        "disease": resolved_key,
+        "display_name": meta["display_name"],
+        "source": local_source,
+        "source_label": (
+            f"DATASUS ao vivo + fallback local ({local_source})"
+            if local_source
+            else "DATASUS ao vivo sem serie municipal local"
+        ),
+        "mode": (
+            "datasus_live_with_local_fallback"
+            if local_source
+            else "datasus_live_metadata_only"
+        ),
+        "datasus": {
+            "page": meta.get("datasus_page"),
+            "tabnet": meta.get("datasus_tabnet"),
+            "live_status": datasus_live,
+        },
+        "summary": {
+            "total_municipios": len(nums),
+            "min": min(nums) if nums else None,
+            "max": max(nums) if nums else None,
+            "mean": round(sum(nums) / len(nums), 4) if nums else None,
+        },
+    }
+    if include_municipios:
+        payload["municipios"] = values or {}
+    return payload
 
 
 def _resolve_workspace_file(path_value: str) -> Path | None:
@@ -470,7 +676,7 @@ def _find_municipio_disease_values(municipio_nome: str) -> dict[str, float]:
     target = _normalize_municipio_key(municipio_nome)
     result: dict[str, float] = {}
 
-    for disease_key in DISEASE_FILE_ALIASES:
+    for disease_key in DISEASE_CATALOG:
         values, _ = _load_disease_csv(disease_key)
         if not values:
             continue
@@ -587,25 +793,55 @@ def get_realtime_municipio() -> tuple[dict, int]:
 def get_datasus_catalog() -> tuple[dict, int]:
     catalog: dict[str, dict] = {}
 
-    for disease_key in DISEASE_FILE_ALIASES:
-        values, path = _load_disease_csv(disease_key)
-        nums = list(values.values()) if values else []
-        catalog[disease_key] = {
-            "source": str(path.relative_to(Path(__file__).parent)) if path else None,
-            "total_municipios": len(nums),
-            "min": min(nums) if nums else None,
-            "max": max(nums) if nums else None,
-            "mean": round(sum(nums) / len(nums), 4) if nums else None,
-            "municipios": values or {},
-        }
+    for disease_key in DISEASE_CATALOG:
+        payload = _build_disease_payload(disease_key)
+        if payload is not None:
+            catalog[disease_key] = payload
 
     return jsonify(
         {
-            "fonte": "CATALOGO DATASUS local (CSV) com atualização em tempo real na visualização",
+            "fonte": "CATALOGO DATASUS com verificacao de disponibilidade ao vivo e fallback local por municipio",
             "agravos": catalog,
             "total_agravos": len(catalog),
         }
     ), 200
+
+
+@app.get("/api/cartography/pernambuco")
+def get_pernambuco_cartography() -> tuple[dict, int]:
+    try:
+        gdf, municipalities_geojson, state_geojson, catalog, source_path = _load_pernambuco_cartography()
+    except FileNotFoundError as error:
+        return {"error": str(error)}, 404
+
+    return jsonify(
+        {
+            "ok": True,
+            "source": str(source_path.relative_to(Path(__file__).parent)),
+            "summary": {
+                "total_municipios": int(len(gdf)),
+                "crs": str(gdf.crs),
+            },
+            "state": state_geojson,
+            "municipalities": municipalities_geojson,
+            "catalog": catalog,
+        }
+    ), 200
+
+
+@app.get("/api/cartography/pernambuco/municipios/<ibge_code>")
+def get_pernambuco_municipality_geometry(ibge_code: str):
+    try:
+        gdf, _, _, _, _ = _load_pernambuco_cartography()
+    except FileNotFoundError as error:
+        return {"error": str(error)}, 404
+
+    normalized_code = _normalize_ibge_code(ibge_code)
+    selected = gdf[gdf["code_muni"] == normalized_code]
+    if selected.empty:
+        return {"error": "Municipio nao encontrado", "ibge_code": ibge_code}, 404
+
+    return jsonify(json.loads(selected.to_json())), 200
 
 
 def _check_password(password: str) -> bool:
@@ -792,30 +1028,17 @@ def list_climate_sources() -> tuple[dict, int]:
 
 @app.get("/api/disease-data/<disease_key>")
 def get_disease_data(disease_key: str) -> tuple[dict, int]:
-    """Retorna dados de doença carregados de CSV local."""
-    values, path = _load_disease_csv(disease_key)
-    if values is None or path is None:
-        expected = ", ".join(sorted(DISEASE_FILE_ALIASES.keys()))
+    """Retorna dados do agravo com metadados DATASUS e fallback local por municipio."""
+    payload = _build_disease_payload(disease_key)
+    if payload is None:
+        expected = ", ".join(sorted(DISEASE_CATALOG.keys()))
         return {
-            "error": "Arquivo CSV de doença não encontrado",
+            "error": "Agravo nao encontrado no catalogo",
             "disease": disease_key,
             "expected_keys": expected,
         }, 404
 
-    nums = list(values.values())
-    return jsonify(
-        {
-            "disease": disease_key,
-            "source": str(path.relative_to(Path(__file__).parent)),
-            "municipios": values,
-            "summary": {
-                "total_municipios": len(nums),
-                "min": min(nums) if nums else None,
-                "max": max(nums) if nums else None,
-                "mean": round(sum(nums) / len(nums), 4) if nums else None,
-            },
-        }
-    ), 200
+    return jsonify(payload), 200
 
 
 @app.post("/api/maps/professional-overlay")
@@ -848,8 +1071,13 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
             "ok": True,
             "disease_key": result.disease_key,
             "image_url": image_url,
-            "source_csv": str(result.source_csv.relative_to(Path(__file__).parent)),
+            "source_csv": (
+                str(result.source_csv.relative_to(Path(__file__).parent))
+                if result.source_csv is not None
+                else None
+            ),
             "variable": result.variable_label,
+            "has_local_data": result.has_local_data,
         }
     ), 200
 
