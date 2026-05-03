@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "chroma-js": "^3.2.0",
+    "dom-to-image": "^2.6.0",
+    "html2canvas": "^1.4.1",
+    "leaflet": "^1.9.4",
+    "leaflet-providers": "^3.0.0"
+  }
+}

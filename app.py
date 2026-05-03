@@ -1082,6 +1082,27 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
     ), 200
 
 
+@app.route("/download")
+def download():
+    target = Path(__file__).parent / "mapa_ibge_style.png"
+
+    if not target.exists():
+        try:
+            from scripts.generate_choropleth_brazil import generate_professional_choropleth
+
+            generated = generate_professional_choropleth(
+                disease_key="scz",
+                title="Sindrome Congenita da Zika",
+                output_filename="mapa_ibge_style.png",
+                dpi=300,
+            )
+            target = generated.output_file
+        except Exception as error:  # pragma: no cover - rota operacional
+            return jsonify({"error": "Falha ao gerar mapa para download", "details": str(error)}), 500
+
+    return send_file(target, as_attachment=True)
+
+
 @app.post("/api/maps/prepared-heatmap-overlay")
 def generate_prepared_heatmap_overlay() -> tuple[dict, int]:
     payload = request.get_json(silent=True) or {}
