@@ -778,12 +778,12 @@
         border-radius: 14px;
         border: 1px solid rgba(77, 56, 114, 0.28);
         overflow: hidden;
-        filter: brightness(1.03) contrast(1.02);
-        background: #f7fafc;
+        filter: brightness(0.94) contrast(1.1) saturate(0.92);
+        background: #151525;
       }
 
       .leaflet-container {
-        background: #f7fafc !important;
+        background: #151525 !important;
       }
 
       .map-loading {
@@ -810,9 +810,12 @@
       }
 
       .demo-panel {
-        border: 1px solid rgba(225, 198, 255, 0.44);
+          border: 1px solid rgba(150, 115, 215, 0.48);
         border-radius: 14px;
-        background: rgba(247, 244, 255, 0.95);
+          background:
+            radial-gradient(circle at top right, rgba(106, 68, 170, 0.28), transparent 28%),
+            linear-gradient(180deg, rgba(27, 18, 45, 0.98), rgba(18, 12, 32, 0.98));
+          box-shadow: 0 20px 48px rgba(8, 5, 16, 0.34);
         padding: 10px;
         display: grid;
         grid-template-rows: auto 1fr auto;
@@ -822,7 +825,7 @@
       .demo-title {
         margin: 0;
         font-size: 12px;
-        color: #4a326d;
+        color: #efe3ff;
         letter-spacing: 0.4px;
       }
 
@@ -831,19 +834,23 @@
         height: auto;
         aspect-ratio: 3;
         border-radius: 10px;
-        background: linear-gradient(160deg, #f7fbff, #f4efff);
-        border: 1px solid rgba(208, 179, 255, 0.34);
-        display: block;
+        background:
+          radial-gradient(circle at 50% 38%, rgba(92, 71, 139, 0.22), transparent 24%),
+          linear-gradient(155deg, #181125, #24163c 48%, #120d1d);
+        border: 1px solid rgba(168, 131, 228, 0.4);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+        display: none;
       }
 
       .professional-map-preview {
         width: 100%;
         height: auto;
-        aspect-ratio: 3;
+        aspect-ratio: 5 / 4;
         border-radius: 10px;
-        border: 1px solid rgba(208, 179, 255, 0.34);
+        border: 1px solid rgba(168, 131, 228, 0.4);
+        background: #ffffff;
         display: none;
-        object-fit: cover;
+        object-fit: contain;
       }
 
       .professional-map-preview.visible {
@@ -856,6 +863,10 @@
         gap: 4px 14px;
         font-size: 11px;
         color: #ead8ff;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(14, 10, 24, 0.78);
+        border: 1px solid rgba(155, 121, 217, 0.18);
       }
 
       .demo-meta span {
@@ -2744,7 +2755,7 @@
       // Retorna a cor de preenchimento coroplético baseada no valor normalizado (0–1) ou null para sem dado
       function choroplethFill(norm) {
         if (norm === null) {
-          return { fill: "rgba(224, 218, 238, 0.88)", stroke: "rgba(165, 148, 195, 0.65)", lw: 0.6 };
+          return { fill: "rgba(146, 130, 188, 0.94)", stroke: "rgba(227, 214, 255, 0.68)", lw: 0.85 };
         }
         // Rampa: lavanda clara (0) → roxo profundo (1), coerente com a paleta da plataforma
         const ramp = [
@@ -2763,12 +2774,12 @@
         const r = Math.round(r1 + (r2 - r1) * f);
         const g = Math.round(g1 + (g2 - g1) * f);
         const b = Math.round(b1 + (b2 - b1) * f);
-        const alpha = 0.72 + norm * 0.24;
-        const strokeAlpha = norm > 0.4 ? "0.45" : "0.35";
+        const alpha = 0.82 + norm * 0.16;
+        const strokeAlpha = norm > 0.4 ? "0.62" : "0.48";
         return {
           fill: "rgba(" + r + "," + g + "," + b + "," + alpha.toFixed(2) + ")",
           stroke: "rgba(60,20,110," + strokeAlpha + ")",
-          lw: 0.7
+          lw: 0.85
         };
       }
 
@@ -3152,7 +3163,17 @@
         const mode = options.mode || selectedDemoMode;
 
         ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = "#f6f3fa";
+        const backgroundGradient = ctx.createLinearGradient(0, 0, width, height);
+        backgroundGradient.addColorStop(0, "#1a1328");
+        backgroundGradient.addColorStop(0.55, "#24163b");
+        backgroundGradient.addColorStop(1, "#120d1d");
+        ctx.fillStyle = backgroundGradient;
+        ctx.fillRect(0, 0, width, height);
+
+        const glow = ctx.createRadialGradient(width * 0.58, height * 0.52, 12, width * 0.58, height * 0.52, Math.max(width, height) * 0.32);
+        glow.addColorStop(0, "rgba(132, 96, 214, 0.16)");
+        glow.addColorStop(1, "rgba(132, 96, 214, 0)");
+        ctx.fillStyle = glow;
         ctx.fillRect(0, 0, width, height);
 
         const projected = buildProjectedSpatialData(featureCollection, width, height);
@@ -3189,12 +3210,12 @@
         const max = Math.max(...combined, 0);
         const min = Math.min(...combined, 0);
 
-        ctx.fillStyle = "rgba(255, 252, 255, 0.90)";
+        ctx.fillStyle = "rgba(14, 10, 24, 0.88)";
         ctx.fillRect(10, 10, width - 20, 74);
-        ctx.strokeStyle = "rgba(160, 120, 200, 0.35)";
+        ctx.strokeStyle = "rgba(176, 142, 235, 0.45)";
         ctx.lineWidth = 1;
         ctx.strokeRect(10, 10, width - 20, 74);
-        ctx.fillStyle = "#2c1252";
+        ctx.fillStyle = "#f3e9ff";
         ctx.font = "bold 16px Trebuchet MS";
         ctx.fillText("Demonstrador - " + describeMode(mode), 16, 33);
         const years = Array.from(selectedYears).sort((a, b) => a - b);
@@ -3718,7 +3739,7 @@
         const climateLabel = Array.from(selectedClimates).join(" + ") || "Clima";
         const geresLabel = activeGeres === "ALL" ? "PE" : activeGeres;
         const overlayName = climateLabel + " x " + selectedDisease.name + " : " + geresLabel;
-        renderDemonstratorImage("GWR - " + overlayName, { mode: "gwr" });
+        lastDemoLabel = "GWR - " + overlayName;
         addDiseaseLegend(overlayName);
         selectedDemoMode = "gwr";
         analysisModeSelect.value = "gwr";
@@ -3846,10 +3867,10 @@
 
         estadoLayer = L.geoJSON(estadoGeo, {
           style: {
-            color: "#f7e8ff",
-            weight: 2,
-            fillColor: "#9c6bda",
-            fillOpacity: 0.15
+            color: "#f3d8ff",
+            weight: 2.2,
+            fillColor: "#7646b8",
+            fillOpacity: 0.38
           }
         }).addTo(map);
         map.fitBounds(estadoLayer.getBounds(), { padding: [18, 18] });
@@ -4052,46 +4073,81 @@
 
       analysisModeSelect.addEventListener("change", () => {
         selectedDemoMode = analysisModeSelect.value;
-        if (currentMapGeoJson || getCurrentBaseFeatureCollection()) {
-          renderDemonstratorImage(lastDemoLabel || "modo analítico");
+        void generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
+      });
+
+      downloadDemoImageBtn.addEventListener("click", async () => {
+        try {
+          if (!lastProfessionalMapUrl) {
+            await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
+          }
+
+          if (!lastProfessionalMapUrl) {
+            updateRobotMessage("Nao foi possível gerar a imagem do demonstrador. Tente novamente.");
+            return;
+          }
+
+          await downloadBlobFile(lastProfessionalMapUrl, "demonstrador_epigeodata_hd.png");
+          updateRobotMessage("Imagem do demonstrador baixada com sucesso.");
+        } catch (_) {
+          updateRobotMessage("Falha ao baixar a imagem do demonstrador.");
         }
       });
 
-      downloadDemoImageBtn.addEventListener("click", () => {
-        if (!currentMapGeoJson && !getCurrentBaseFeatureCollection()) {
-          updateRobotMessage("Gere uma camada no mapa para criar a imagem do demonstrador.");
-          return;
+      async function downloadBlobFile(url, filename) {
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error("Falha ao baixar arquivo");
         }
 
-        const hdCanvas = document.createElement("canvas");
-        hdCanvas.width = 2700;
-        hdCanvas.height = 900;
-        renderDemonstratorImage(lastDemoLabel || "analise", {
-          targetCanvas: hdCanvas,
-          mode: selectedDemoMode,
-          skipMeta: true
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = blobUrl;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(blobUrl);
+      }
+
+      async function downloadProfessionalMapFromBackend() {
+        const diseaseKey = resolveDiseaseApiKey(selectedDisease.name);
+        const query = new URLSearchParams({
+          disease_key: diseaseKey,
+          title: institutionalProfessionalMapTitle,
         });
+        await downloadBlobFile("/download?" + query.toString(), "sobreposicao_cientifica_pernambuco_300dpi.png");
+      }
 
-        const anchor = document.createElement("a");
-        anchor.href = hdCanvas.toDataURL("image/png");
-        anchor.download = "demonstrador_epigeodata_hd.png";
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-      });
+      downloadProfessionalMapBtn.addEventListener("click", async () => {
+        const originalLabel = downloadProfessionalMapBtn.textContent;
+        downloadProfessionalMapBtn.disabled = true;
+        downloadProfessionalMapBtn.textContent = "Gerando download 300 dpi...";
 
-      downloadProfessionalMapBtn.addEventListener("click", () => {
-        if (!lastProfessionalMapUrl) {
-          updateRobotMessage("Gere o mapa sobreposto para criar a imagem científica da sobreposição.");
-          return;
+        try {
+          if (!lastProfessionalMapUrl) {
+            await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
+          }
+
+          if (lastProfessionalMapUrl) {
+            try {
+              await downloadBlobFile(lastProfessionalMapUrl, "sobreposicao_cientifica_pernambuco_300dpi.png");
+              updateRobotMessage("Mapa cartográfico em 300 dpi baixado com sucesso.");
+              return;
+            } catch (_) {
+              // fallback para geração/stream direto no backend
+            }
+          }
+
+          await downloadProfessionalMapFromBackend();
+          updateRobotMessage("Mapa cartográfico em 300 dpi baixado com sucesso.");
+        } catch (_) {
+          updateRobotMessage("Falha ao baixar o mapa cartográfico em 300 dpi. Tente gerar novamente o mapa sobreposto.");
+        } finally {
+          downloadProfessionalMapBtn.disabled = false;
+          downloadProfessionalMapBtn.textContent = originalLabel;
         }
-
-        const anchor = document.createElement("a");
-        anchor.href = lastProfessionalMapUrl;
-        anchor.download = "sobreposicao_cientifica_pernambuco.png";
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
       });
 
       const robotHints = [

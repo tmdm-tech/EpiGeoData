@@ -14,9 +14,12 @@ import geopandas as gpd
 import mapclassify as mc
 import matplotlib.pyplot as plt
 import pandas as pd
+import contextily as ctx
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import FancyArrowPatch, Patch
+from matplotlib.lines import Line2D
 from matplotlib_scalebar.scalebar import ScaleBar
+from shapely.geometry import box
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = BASE_DIR / "static" / "maps"
@@ -66,10 +69,10 @@ DISEASE_FILE_ALIASES = {
     for key, meta in DISEASE_METADATA.items()
 }
 
-PALETTE = ["#fff4cc", "#f9d976", "#f5a65b", "#db6d3d", "#8e2b2d"]
-NO_DATA_COLOR = "#e7e2d8"
-BACKGROUND_COLOR = "#f6f2ea"
-FRAME_COLOR = "#443a33"
+PALETTE = ["#d9d7ef", "#b1addb", "#8e89c9", "#644ab1", "#4b0f94"]
+NO_DATA_COLOR = "#f1f1f1"
+BACKGROUND_COLOR = "#ffffff"
+FRAME_COLOR = "#222222"
 
 
 @dataclass
@@ -200,15 +203,15 @@ def set_standard_map_frame(ax: plt.Axes, gdf: gpd.GeoDataFrame) -> None:
 
 
 def render_side_panel(ax: plt.Axes, title: str, subtitle: str, source_note: str, handles: list[Patch]) -> None:
-    ax.set_facecolor("#fbf8f2")
+    ax.set_facecolor("#10182a")
     ax.set_xticks([])
     ax.set_yticks([])
     for spine in ax.spines.values():
         spine.set_visible(False)
 
-    ax.text(0.0, 0.98, title, fontsize=12, fontweight="bold", color="#2f2a24", va="top")
-    ax.text(0.0, 0.90, subtitle, fontsize=9.2, color="#5b5248", va="top", wrap=True)
-    ax.text(0.0, 0.80, "Legenda", fontsize=10.5, fontweight="bold", color="#2f2a24")
+    ax.text(0.0, 0.98, title, fontsize=12, fontweight="bold", color="#eef4ff", va="top")
+    ax.text(0.0, 0.90, subtitle, fontsize=9.2, color="#c9d9ff", va="top", wrap=True)
+    ax.text(0.0, 0.80, "Legenda", fontsize=10.5, fontweight="bold", color="#eef4ff")
 
     if handles:
         legend = ax.legend(
@@ -223,10 +226,10 @@ def render_side_panel(ax: plt.Axes, title: str, subtitle: str, source_note: str,
             fontsize=9,
         )
         for txt in legend.get_texts():
-            txt.set_color("#3d362f")
+            txt.set_color("#d6e4ff")
 
-    ax.text(0.0, 0.25, "Fonte e status", fontsize=10.5, fontweight="bold", color="#2f2a24")
-    ax.text(0.0, 0.21, source_note, fontsize=8.8, color="#5b5248", va="top", wrap=True)
+    ax.text(0.0, 0.25, "Fonte e status", fontsize=10.5, fontweight="bold", color="#eef4ff")
+    ax.text(0.0, 0.21, source_note, fontsize=8.8, color="#c9d9ff", va="top", wrap=True)
 
 
 def generate_professional_choropleth(
@@ -253,69 +256,91 @@ def generate_professional_choropleth(
     values = pd.to_numeric(municipalities_pe["total_casos"], errors="coerce")
     has_classified_values = has_local_data and values.notna().any() and int(values.fillna(0).nunique()) > 1
 
-    footer = "Fonte cartografica: IBGE 2020 | Base municipal: data/municipios_pe_ibge.geojson | Elaboracao: EpiGeoData"
-    source_note = (
-        f"Serie municipal local aplicada: {csv_path.name}.\nConsulta DATASUS permanece vinculada via backend."
-        if csv_path is not None
-        else "Sem serie municipal local no workspace para este agravo. O export permanece coerente e registra a ausencia de dados municipais."
-    )
-
     if output_filename:
         output_file = OUTPUT_DIR / output_filename
     else:
         stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         output_file = OUTPUT_DIR / f"mapa_profissional_{resolved_key}_{stamp}.png"
 
-    fig = plt.figure(figsize=(13.8, 8.4), facecolor=BACKGROUND_COLOR)
-    grid = fig.add_gridspec(1, 2, width_ratios=[4.9, 1.8], left=0.04, right=0.98, top=0.88, bottom=0.11, wspace=0.02)
-    ax = fig.add_subplot(grid[0, 0])
-    side_ax = fig.add_subplot(grid[0, 1])
+    # O padrão visual segue o layout de referência: basemap claro + coroplético em roxo + legenda compacta.
+    gdf = municipalities_pe.to_crs("EPSG:3857")
 
-    fig.text(0.04, 0.955, resolved_title, fontsize=18, fontweight="bold", color="#2b251f")
-    fig.text(
-        0.04,
-        0.925,
-        "Mapa epidemiologico padronizado para Pernambuco com exportacao cartografica consistente.",
-        fontsize=10.2,
-        color="#5b5248",
+    fig, ax = plt.subplots(figsize=(12, 9), facecolor=BACKGROUND_COLOR)
+    ax.set_facecolor(BACKGROUND_COLOR)
+
+    # Janela fixa no Nordeste para reproduzir composição visual do mapa de referência.
+    bbox_mercator = gpd.GeoSeries([box(-43.1, -11.7, -33.6, -1.7)], crs="EPSG:4326").to_crs("EPSG:3857")
+    minx, miny, maxx, maxy = bbox_mercator.total_bounds
+    ax.set_xlim(minx, maxx)
+    ax.set_ylim(miny, maxy)
+
+    ctx.add_basemap(
+        ax,
+        source=ctx.providers.CartoDB.Positron,
+        attribution_size=10,
     )
 
-    legend_handles: list[Patch] = []
+    legend_handles: list[Line2D] = []
     if has_classified_values:
         classifier = build_classification(values, DEFAULT_SCHEME, DEFAULT_CLASSES)
-        labels = classifier_labels(classifier, values.dropna())
-        palette = PALETTE[: len(labels)]
-        class_ids = pd.Series(pd.NA, index=municipalities_pe.index, dtype="object")
+        class_bins = [float(values.min())] + [float(v) for v in classifier.bins]
+        class_ids = pd.Series(pd.NA, index=gdf.index, dtype="object")
         class_ids.loc[values.dropna().index] = classifier.yb.astype(int)
-        municipalities_pe["plot_color"] = class_ids.map(lambda idx: palette[int(idx)] if pd.notna(idx) else NO_DATA_COLOR)
+        palette = PALETTE[: len(class_bins) - 1]
+        gdf["plot_color"] = class_ids.map(lambda idx: palette[int(idx)] if pd.notna(idx) else NO_DATA_COLOR)
 
-        municipalities_pe.plot(
+        gdf.plot(
             ax=ax,
-            color=municipalities_pe["plot_color"],
-            edgecolor="#f7f2eb",
-            linewidth=0.55,
+            color=gdf["plot_color"],
+            edgecolor=FRAME_COLOR,
+            linewidth=1.1,
+            alpha=0.96,
         )
-        municipalities_pe.boundary.plot(ax=ax, color=FRAME_COLOR, linewidth=0.35, alpha=0.8)
-        legend_handles = [Patch(facecolor=color, edgecolor=FRAME_COLOR, label=label) for color, label in zip(palette, labels)]
-        legend_handles.append(Patch(facecolor=NO_DATA_COLOR, edgecolor=FRAME_COLOR, label="Sem dados"))
+
+        for idx, color in enumerate(palette):
+            low = class_bins[idx]
+            high = class_bins[idx + 1]
+            label = f"{low:.2f},  {high:.2f}"
+            legend_handles.append(
+                Line2D([0], [0], marker="o", color="none", markerfacecolor=color, markeredgecolor=color, markersize=10, label=label)
+            )
     else:
-        municipalities_pe.plot(ax=ax, color=NO_DATA_COLOR, edgecolor=FRAME_COLOR, linewidth=0.55)
-        municipalities_pe.boundary.plot(ax=ax, color=FRAME_COLOR, linewidth=0.35, alpha=0.8)
-        legend_handles = [Patch(facecolor=NO_DATA_COLOR, edgecolor=FRAME_COLOR, label="Sem serie municipal local")]
+        gdf.plot(ax=ax, color=NO_DATA_COLOR, edgecolor=FRAME_COLOR, linewidth=1.1, alpha=0.96)
+        legend_handles.append(
+            Line2D([0], [0], marker="o", color="none", markerfacecolor=NO_DATA_COLOR, markeredgecolor="#8a8a8a", markersize=10, label="Sem dados")
+        )
 
-    set_standard_map_frame(ax, municipalities_pe)
-    add_cartographic_elements(ax)
-    ax.set_facecolor(BACKGROUND_COLOR)
-    render_side_panel(
-        side_ax,
-        title="Painel de leitura",
-        subtitle=f"Variavel cartografada: {variable_label.lower()} de {display_name}.",
-        source_note=source_note,
+    legend = ax.legend(
         handles=legend_handles,
+        loc="upper right",
+        frameon=True,
+        framealpha=0.95,
+        facecolor="white",
+        edgecolor="#c8c8c8",
+        fontsize=12,
     )
+    for text in legend.get_texts():
+        text.set_color("#1f1f1f")
 
-    fig.text(0.04, 0.055, footer, fontsize=8.4, color="#5b5248")
-    fig.savefig(output_file, dpi=dpi, bbox_inches="tight", facecolor=BACKGROUND_COLOR)
+    ax.set_title(display_name, fontsize=24, fontweight="normal", pad=10, color="#202020")
+
+    ax.text(
+        0.012,
+        0.013,
+        "(C) OpenStreetMap contributors (C) CARTO",
+        transform=ax.transAxes,
+        fontsize=10,
+        color="#202020",
+        ha="left",
+        va="bottom",
+        bbox={"facecolor": "white", "edgecolor": "none", "pad": 1.8, "alpha": 0.75},
+    )
+    ax.set_axis_off()
+
+    fig.subplots_adjust(left=0.03, right=0.98, top=0.90, bottom=0.14)
+    fig.text(0.12, 0.075, "Fonte: DATASUS", fontsize=15, color="#222222")
+    fig.text(0.12, 0.043, "Elaboracao propria", fontsize=15, color="#222222")
+    fig.savefig(output_file, dpi=dpi, facecolor=BACKGROUND_COLOR)
     plt.close(fig)
 
     return ChoroplethResult(

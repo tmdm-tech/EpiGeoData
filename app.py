@@ -1084,23 +1084,28 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
 
 @app.route("/download")
 def download():
-    target = Path(__file__).parent / "mapa_ibge_style.png"
+    disease_key = str(request.args.get("disease_key", "scz")).strip() or "scz"
+    resolved_key = _resolve_disease_key(disease_key) or "scz"
+    disease_meta = DISEASE_CATALOG.get(resolved_key, {})
+    default_title = f"EpiGeoData | Mapa Coropletico Cientifico - {disease_meta.get('display_name', resolved_key)}"
+    title = str(request.args.get("title", "")).strip() or default_title
 
-    if not target.exists():
-        try:
-            from scripts.generate_choropleth_brazil import generate_professional_choropleth
+    output_filename = f"mapa_profissional_{_normalize_token(resolved_key)}_300dpi.png"
 
-            generated = generate_professional_choropleth(
-                disease_key="scz",
-                title="Sindrome Congenita da Zika",
-                output_filename="mapa_ibge_style.png",
-                dpi=300,
-            )
-            target = generated.output_file
-        except Exception as error:  # pragma: no cover - rota operacional
-            return jsonify({"error": "Falha ao gerar mapa para download", "details": str(error)}), 500
+    try:
+        from scripts.generate_choropleth_brazil import generate_professional_choropleth
 
-    return send_file(target, as_attachment=True)
+        generated = generate_professional_choropleth(
+            disease_key=resolved_key,
+            title=title,
+            output_filename=output_filename,
+            dpi=300,
+        )
+        target = generated.output_file
+    except Exception as error:  # pragma: no cover - rota operacional
+        return jsonify({"error": "Falha ao gerar mapa para download", "details": str(error)}), 500
+
+    return send_file(target, as_attachment=True, download_name=output_filename)
 
 
 @app.post("/api/maps/prepared-heatmap-overlay")
