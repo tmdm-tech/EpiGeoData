@@ -274,11 +274,15 @@ def generate_professional_choropleth(
     ax.set_xlim(minx, maxx)
     ax.set_ylim(miny, maxy)
 
-    ctx.add_basemap(
-        ax,
-        source=ctx.providers.CartoDB.Positron,
-        attribution_size=10,
-    )
+    try:
+        ctx.add_basemap(
+            ax,
+            source=ctx.providers.CartoDB.Positron,
+            attribution_size=10,
+        )
+    except Exception:
+        # Fallback resiliente para ambientes sem acesso/compatibilidade com tiles remotos.
+        pass
 
     legend_handles: list[Line2D] = []
     if has_classified_values:
@@ -323,18 +327,6 @@ def generate_professional_choropleth(
         text.set_color("#1f1f1f")
 
     ax.set_title(display_name, fontsize=24, fontweight="normal", pad=10, color="#202020")
-
-    ax.text(
-        0.012,
-        0.013,
-        "(C) OpenStreetMap contributors (C) CARTO",
-        transform=ax.transAxes,
-        fontsize=10,
-        color="#202020",
-        ha="left",
-        va="bottom",
-        bbox={"facecolor": "white", "edgecolor": "none", "pad": 1.8, "alpha": 0.75},
-    )
     ax.set_axis_off()
 
     fig.subplots_adjust(left=0.03, right=0.98, top=0.90, bottom=0.14)
