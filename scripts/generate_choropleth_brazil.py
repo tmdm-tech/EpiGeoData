@@ -107,15 +107,25 @@ def resolve_disease_key(disease_key: str) -> str:
 
 def resolve_disease_csv(disease_key: str) -> tuple[str, Path | None]:
     key = resolve_disease_key(disease_key)
-    aliases = DISEASE_FILE_ALIASES.get(key, [key])
+    aliases = [normalize_token(alias) for alias in DISEASE_FILE_ALIASES.get(key, [key])]
     candidates = [BASE_DIR / "data" / "doencas", BASE_DIR / "data", BASE_DIR]
+
+    # Busca direta por nomes esperados evita recursao profunda em ambientes de deploy.
+    for base in candidates:
+        if not base.exists() or not base.is_dir():
+            continue
+        for alias in aliases:
+            candidate = base / f"{alias}.csv"
+            if candidate.exists() and candidate.is_file():
+                return key, candidate
 
     for base in candidates:
         if not base.exists() or not base.is_dir():
             continue
-        for path in base.rglob("*.csv"):
+        for path in base.glob("*.csv"):
             if normalize_token(path.stem) in aliases:
                 return key, path
+
     return key, None
 
 
