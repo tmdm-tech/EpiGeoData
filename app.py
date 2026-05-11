@@ -844,6 +844,47 @@ def get_pernambuco_municipality_geometry(ibge_code: str):
     return jsonify(json.loads(selected.to_json())), 200
 
 
+@app.get("/api/cartography/pernambuco/limites")
+def get_pernambuco_limites():
+    """Retorna limites, centroid e bbox de todos os municípios de PE em tempo real."""
+    try:
+        gdf, _, _, _, source_path = _load_pernambuco_cartography()
+    except FileNotFoundError as error:
+        return {"error": str(error)}, 404
+
+    # Reprojetar para WGS84 se necessário
+    if gdf.crs and not gdf.crs.is_geographic:
+        gdf = gdf.to_crs(epsg=4326)
+
+    limites = []
+    for _, row in gdf.iterrows():
+        geom = row.geometry
+        if geom is None or geom.is_empty:
+            continue
+        bounds = geom.bounds  # tupla (minx, miny, maxx, maxy) = (lng_min, lat_min, lng_max, lat_max)
+        centroid = geom.centroid
+        limites.append({
+            "ibge_code": str(row.get("code_muni", "")),
+            "nome": str(row.get("name_muni", "")),
+            "lat": round(centroid.y, 6),
+            "lng": round(centroid.x, 6),
+            "bbox": {
+                "lat_min": round(bounds[1], 6),
+                "lat_max": round(bounds[3], 6),
+                "lng_min": round(bounds[0], 6),
+                "lng_max": round(bounds[2], 6),
+            },
+        })
+
+    return jsonify({
+        "ok": True,
+        "total": len(limites),
+        "source": str(source_path.relative_to(Path(__file__).parent)),
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "municipios": limites,
+    }), 200
+
+
 def _check_password(password: str) -> bool:
     expected = os.getenv("ACCESS_PASSWORD", "epigeodata123")
     return password == expected
