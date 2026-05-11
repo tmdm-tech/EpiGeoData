@@ -4078,21 +4078,33 @@
 
       downloadDemoImageBtn.addEventListener("click", async () => {
         try {
-          if (!lastProfessionalMapUrl) {
-            await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
+          if (!lastDemoImageDataUrl) {
+            const climateLabel = Array.from(selectedClimates).join(" + ") || "Clima";
+            const geresLabel = activeGeres === "ALL" ? "PE" : activeGeres;
+            const overlayName = climateLabel + " x " + selectedDisease.name + " : " + geresLabel;
+            renderDemonstratorImage("GWR - " + overlayName, { mode: selectedDemoMode || "gwr" });
           }
 
-          if (!lastProfessionalMapUrl) {
-            updateRobotMessage("Nao foi possível gerar a imagem do demonstrador. Tente novamente.");
+          if (!lastDemoImageDataUrl) {
+            updateRobotMessage("Nao foi possível gerar a imagem HD do demonstrador. Tente novamente.");
             return;
           }
 
-          await downloadBlobFile(lastProfessionalMapUrl, "demonstrador_epigeodata_hd.png");
-          updateRobotMessage("Imagem do demonstrador baixada com sucesso.");
+          downloadDataUrlFile(lastDemoImageDataUrl, "demonstrador_epigeodata_hd.png");
+          updateRobotMessage("Imagem HD do demonstrador baixada com sucesso.");
         } catch (_) {
-          updateRobotMessage("Falha ao baixar a imagem do demonstrador.");
+          updateRobotMessage("Falha ao baixar a imagem HD do demonstrador.");
         }
       });
+
+      function downloadDataUrlFile(dataUrl, filename) {
+        const anchor = document.createElement("a");
+        anchor.href = dataUrl;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
 
       async function downloadBlobFile(url, filename) {
         const response = await fetch(url, { cache: "no-store" });
@@ -4108,7 +4120,7 @@
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();
-        URL.revokeObjectURL(blobUrl);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
       }
 
       async function downloadProfessionalMapFromBackend() {
@@ -4126,24 +4138,21 @@
         downloadProfessionalMapBtn.textContent = "Gerando download 300 dpi...";
 
         try {
-          if (!lastProfessionalMapUrl) {
-            await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
-          }
-
-          if (lastProfessionalMapUrl) {
-            try {
-              await downloadBlobFile(lastProfessionalMapUrl, "sobreposicao_cientifica_pernambuco_300dpi.png");
-              updateRobotMessage("Mapa cartográfico em 300 dpi baixado com sucesso.");
-              return;
-            } catch (_) {
-              // fallback para geração/stream direto no backend
-            }
-          }
-
           await downloadProfessionalMapFromBackend();
           updateRobotMessage("Mapa cartográfico em 300 dpi baixado com sucesso.");
         } catch (_) {
-          updateRobotMessage("Falha ao baixar o mapa cartográfico em 300 dpi. Tente gerar novamente o mapa sobreposto.");
+          try {
+            if (!lastProfessionalMapUrl) {
+              await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
+            }
+            if (!lastProfessionalMapUrl) {
+              throw new Error("Sem URL de mapa profissional");
+            }
+            await downloadBlobFile(lastProfessionalMapUrl, "sobreposicao_cientifica_pernambuco_300dpi.png");
+            updateRobotMessage("Mapa cartográfico em 300 dpi baixado com sucesso.");
+          } catch (_) {
+            updateRobotMessage("Falha ao baixar o mapa cartográfico em 300 dpi. Tente gerar novamente o mapa sobreposto.");
+          }
         } finally {
           downloadProfessionalMapBtn.disabled = false;
           downloadProfessionalMapBtn.textContent = originalLabel;
