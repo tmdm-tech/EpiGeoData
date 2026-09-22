@@ -1,17 +1,14 @@
-# Render Blueprint — EpigeoData
-# Documentação: https://render.com/docs/blueprint-spec
-
+# Render Blueprint — EpiGeoData
+# A branch de desenvolvimento usa a entrada Flask integrada ao catálogo.
 services:
   - type: web
     name: epigeodata
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
-    plan: free              # altere para "starter" ou "standard" quando precisar de mais recursos
+    startCommand: gunicorn wsgi_catalog:app --bind 0.0.0.0:$PORT
+    plan: free
     healthCheckPath: /
-    autoDeploy: true        # deploy automático a cada push na branch principal
-
-    # Variáveis de ambiente (adicione aqui quando precisar de backend/API)
+    autoDeploy: true
     envVars:
       - key: FLUTTER_ENV
         value: production
