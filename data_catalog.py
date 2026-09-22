@@ -18,6 +18,27 @@ DATASETS = (
 )
 
 
+def _pce_header(path: Path) -> tuple[list[str], str]:
+    """Read only the PCE header, with an explicit fallback for legacy CSV bytes.
+
+    A decoding fallback does not establish the dataset's scientific provenance.
+    """
+    raw = path.read_bytes()
+    try:
+        content = raw.decode("utf-8-sig")
+        encoding = "utf-8-sig"
+    except UnicodeDecodeError:
+        content = raw.decode("cp1252")
+        encoding = "cp1252"
+    for line in content.splitlines():
+        if line.lstrip().startswith('"Município"'):
+            header = next(csv.reader([line], delimiter=";"))
+            if len(header) < 3 or header[0] != "Município":
+                raise ValueError("Invalid PCE header")
+            return header, encoding
+    raise ValueError("PCE header not found")
+
+
 def catalogue(root: Path = ROOT) -> list[dict]:
     """Return file-backed metadata; missing files are never silently accepted."""
     output = []
@@ -34,10 +55,8 @@ def catalogue(root: Path = ROOT) -> list[dict]:
                 entry["read_error"] = type(exc).__name__
         if entry["available"] and item["id"] == "pce_positividade":
             try:
-                with path.open(encoding="utf-8-sig", newline="") as handle:
-                    header = next(csv.reader((line for line in handle if line.startswith('"Município"')), delimiter=";"))
-                entry["columns"] = header
-            except (OSError, StopIteration, UnicodeError) as exc:
+                entry["columns"], entry["encoding"] = _pce_header(path)
+            except (OSError, ValueError, UnicodeError) as exc:
                 entry["read_error"] = type(exc).__name__
         output.append(entry)
     return output
