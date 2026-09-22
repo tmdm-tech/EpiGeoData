@@ -1,6 +1,6 @@
-"""Integration contract: these tests must run against the actual Flask application."""
+"""Integration tests for the real Flask app plus catalog WSGI entrypoint."""
 import unittest
-from app import app
+from wsgi_catalog import app
 
 
 class CatalogIntegrationTests(unittest.TestCase):
@@ -20,6 +20,10 @@ class CatalogIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertFalse(response.get_json()['can_run_gwr'])
         self.assertIsNone(response.get_json()['results'])
+
+    def test_existing_app_routes_are_preserved(self):
+        self.assertIn('data_catalog', app.blueprints)
+        self.assertIn('static', app.view_functions)
 
 
 if __name__ == '__main__':
