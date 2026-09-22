@@ -28,6 +28,15 @@ class Stage3ValidationTests(unittest.TestCase):
         with self.assertRaises(DataValidationError):
             validate_municipal_panel([{'codigo_ibge': '2604106', 'ano': '2021', 'positividade_percentual': '-'}])
 
+    def test_nonfinite_outcomes_rejected(self):
+        for value in ('inf', '-inf', 'NaN'):
+            with self.subTest(value=value), self.assertRaises(DataValidationError):
+                validate_municipal_panel([{'codigo_ibge': '2604106', 'ano': '2021', 'positividade_percentual': value}])
+
+    def test_malformed_year_rejected(self):
+        with self.assertRaises(DataValidationError):
+            validate_municipal_panel([{'codigo_ibge': '2604106', 'ano': '2021.0', 'positividade_percentual': '1.2'}])
+
     def test_sex_strata_are_distinct(self):
         rows = [
             {'codigo_ibge': '2604106', 'ano': '2021', 'positividade_percentual': '1.2', 'sexo': 'F'},
