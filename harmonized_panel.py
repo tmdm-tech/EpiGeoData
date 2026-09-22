@@ -9,7 +9,6 @@ import csv
 import json
 import math
 import re
-from collections import Counter
 from pathlib import Path
 
 
@@ -52,7 +51,7 @@ def _number(value: object, field: str) -> float:
         raise HarmonizationError(f"Missing/non-numeric {field}; no imputation allowed")
     try:
         result = float(str(value).strip().replace(",", "."))
-    except ValueError as exc:
+    except (ValueError, TypeError, OverflowError) as exc:
         raise HarmonizationError(f"Non-numeric {field}") from exc
     if not math.isfinite(result):
         raise HarmonizationError(f"Non-finite {field}")
@@ -62,7 +61,10 @@ def _number(value: object, field: str) -> float:
 def _unique(rows: list[dict], keys: tuple[str, ...], label: str) -> dict[tuple, dict]:
     indexed = {}
     for row in rows:
-        key = tuple(row[field] for field in keys)
+        try:
+            key = tuple(row[field] for field in keys)
+        except (KeyError, TypeError) as exc:
+            raise HarmonizationError(f"Missing {label} key: {exc}") from exc
         if key in indexed:
             raise HarmonizationError(f"Duplicate {label} key: {key}")
         indexed[key] = row
@@ -95,8 +97,10 @@ def harmonize(
             raise HarmonizationError(f"Missing official GERES membership for {code}")
         territorial.append({"municipio_ibge": code, "geres": geres, "provenance": _source(raw, "territory")})
     territory_index = _unique(territorial, ("municipio_ibge",), "territory")
-    if set(territory_index) != codes:
-        raise HarmonizationError(f"Territorial mismatch: missing={sorted(codes-set(territory_index))}, unexpected={sorted(set(territory_index)-codes)}")
+    # _unique always returns tuple keys; compare like-for-like without altering IBGE codes.
+    territory_codes = {key[0] for key in territory_index}
+    if territory_codes != codes:
+        raise HarmonizationError(f"Territorial mismatch: missing={sorted(codes-territory_codes)}, unexpected={sorted(territory_codes-codes)}")
     climatic = []
     for raw in climate:
         code, year = _code(raw["municipio_ibge"]), _year(raw["ano"])
