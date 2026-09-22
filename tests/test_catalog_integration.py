@@ -21,6 +21,17 @@ class CatalogIntegrationTests(unittest.TestCase):
         self.assertFalse(response.get_json()['can_run_gwr'])
         self.assertIsNone(response.get_json()['results'])
 
+    def test_legacy_gwr_json_route_is_blocked(self):
+        response = self.client.post('/api/maps/epidemiological-gwr', json={})
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.get_json()['status'], 'blocked')
+        self.assertIsNone(response.get_json()['results'])
+
+    def test_legacy_gwr_upload_route_is_blocked(self):
+        response = self.client.post('/api/maps/epidemiological-gwr-upload', data={})
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.get_json()['status'], 'blocked')
+
     def test_existing_app_routes_are_preserved(self):
         self.assertIn('data_catalog', app.blueprints)
         self.assertIn('static', app.view_functions)
