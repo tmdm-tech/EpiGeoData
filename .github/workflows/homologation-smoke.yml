@@ -1,0 +1,58 @@
+name: Homologation HTTP smoke tests
+on:
+  push:
+    branches: [feat/catalogo-dados-integrado]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check live homologation HTTP endpoints
+        env:
+          BASE_URL: https://epigeodata-homologacao.onrender.com
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import time
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          base = os.environ['BASE_URL'].rstrip('/')
+
+          def check(path, method='GET', payload=None, expected=200):
+              data = None if payload is None else json.dumps(payload).encode('utf-8')
+              headers = {'Content-Type': 'application/json'} if data is not None else {}
+              request = Request(base + path, data=data, headers=headers, method=method)
+              for attempt in range(1, 7):
+                  try:
+                      with urlopen(request, timeout=45) as response:
+                          status = response.status
+                          body = response.read(2_000_000)
+                      break
+                  except HTTPError as error:
+                      status = error.code
+                      body = error.read(2_000_000)
+                      break
+                  except (URLError, TimeoutError) as error:
+                      print(f'{method} {path}: connection attempt {attempt}/6 failed: {error}', flush=True)
+                      if attempt == 6:
+                          raise
+                      time.sleep(20)
+              print(f'{method} {path}: HTTP {status}; body excerpt: {body[:1200].decode("utf-8", errors="replace")}', flush=True)
+              assert status == expected, f'{method} {path}: expected HTTP {expected}, got {status}'
+              return body
+
+          check('/')
+          datasets = json.loads(check('/api/catalog/datasets'))
+          assert isinstance(datasets.get('datasets'), list), 'Catalog must return a datasets list'
+          invalid = json.loads(check('/api/catalog/assess', 'POST', {}, 400))
+          assert 'error' in invalid, 'Invalid catalog request must return an error'
+          for path in ('/api/maps/epidemiological-gwr', '/api/maps/epidemiological-gwr-upload'):
+              blocked = json.loads(check(path, 'POST', {}, 422))
+              assert blocked.get('status') == 'blocked', f'{path} must remain fail-closed'
+          print('PASS: homologation home, catalog, invalid input, and both GWR safeguards', flush=True)
+          PY
