@@ -1,4 +1,4 @@
-name: Catalog validation
+name: Catalog and stage 3 validation
 on:
   push:
     branches: [feat/catalogo-dados-integrado]
@@ -16,3 +16,5 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Run catalog unit and application integration tests
         run: python -m unittest discover -s tests -p 'test_*catalog*.py' -v
+      - name: Run stage 3 validation tests
+        run: python -m unittest discover -s tests -p 'test_stage3*.py' -v
