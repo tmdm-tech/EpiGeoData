@@ -1193,7 +1193,12 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
     title = str(payload.get("title", "")).strip() or DEFAULT_PROFESSIONAL_MAP_TITLE
     analysis_mode = str(payload.get("analysis_mode", "choropleth")).strip().lower()
     selected_years = sorted({int(y) for y in (payload.get("selected_years") or []) if str(y).isdigit()})
-    cache_key = (disease_key, title, analysis_mode, tuple(selected_years))
+    selected_climates = tuple(sorted({_normalize_token(v) for v in (payload.get("selected_climates") or []) if str(v).strip()}))
+    socio_variable = _normalize_token(str(payload.get("socio_variable", "")))
+    socio_scope = _normalize_token(str(payload.get("socio_scope", "")))
+    geres = str(payload.get("geres", "ALL")).strip()
+    municipio_id = str(payload.get("municipio_id", "")).strip()
+    cache_key = (disease_key, title, analysis_mode, tuple(selected_years), selected_climates, socio_variable, socio_scope, geres, municipio_id)
     cached = PROFESSIONAL_MAP_CACHE.get(cache_key)
     if cached:
         cached_path = Path(__file__).parent / "static" / cached["relative_path"]
@@ -1211,7 +1216,8 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
         output_filename = f"mapa_profissional_{_normalize_token(disease_key)}_{digest}.png"
         result = generate_professional_choropleth(
             disease_key=disease_key, title=title, output_filename=output_filename,
-            analysis_mode=analysis_mode, selected_years=selected_years, dpi=300,
+            analysis_mode=analysis_mode, selected_years=selected_years, selected_climates=list(selected_climates),
+            socio_variable=socio_variable, socio_scope=socio_scope, geres=geres, municipio_id=municipio_id, dpi=300,
         )
     except FileNotFoundError as error:
         return {"error": str(error)}, 404
@@ -1226,6 +1232,8 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
         "ok": True, "disease_key": result.disease_key, "image_url": image_url,
         "source_csv": str(result.source_csv.relative_to(Path(__file__).parent)) if result.source_csv is not None else None,
         "variable": result.variable_label, "has_local_data": result.has_local_data, "cache_hit": False,
+        "analysis_mode": analysis_mode, "selected_climates": list(selected_climates),
+        "socio_variable": socio_variable, "socio_scope": socio_scope, "geres": geres, "municipio_id": municipio_id,
     }
     PROFESSIONAL_MAP_CACHE[cache_key] = {"relative_path": relative.as_posix(), "payload": response}
     return jsonify(response), 200
