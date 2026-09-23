@@ -55,7 +55,7 @@ DISEASE_CATALOG = {
             "csv_aliases": ["scz", "sindrome_congenita_da_zika", "sindrome_congenita_zika", "zika"],
             "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/registro-de-eventos-em-saude-publica-resp-microcefalia/",
             "tabnet_portal": TABNET_PORTAL_URL,
-            "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/tabcgi.exe?resp/cnv/resp",
+            "datasus_tabnet": "https://tabnet.datasus.gov.br/cgi/deftohtm.exe?resp/cnv/resppe.def",
         },
         "covid_19": {
             "display_name": "Covid 19",
@@ -71,7 +71,7 @@ DISEASE_CATALOG = {
             "csv_aliases": ["dengue"],
             "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/doencas-e-agravos-de-notificacao-de-2007-em-diante-sinan/",
             "tabnet_portal": TABNET_PORTAL_URL,
-            "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/dengue",
+            "datasus_tabnet": "https://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/denguepe.def",
         },
         "esquistossomose": {
             "display_name": "Esquistossomose",
@@ -79,7 +79,7 @@ DISEASE_CATALOG = {
             "csv_aliases": ["esquistossomose"],
             "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/programa-de-controle-da-esquistossomose-pce/",
             "tabnet_portal": TABNET_PORTAL_URL,
-            "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinan/pce/cnv/pce",
+            "datasus_tabnet": "https://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinan/pce/cnv/pcepe.def",
         },
         "tuberculose": {
             "display_name": "Tuberculose",
@@ -87,7 +87,7 @@ DISEASE_CATALOG = {
             "csv_aliases": ["tuberculose"],
             "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/tuberculose-desde-2001-sinan/",
             "tabnet_portal": TABNET_PORTAL_URL,
-            "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/tabcgi.exe?sinannet/cnv/tuberc",
+            "datasus_tabnet": "https://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/tubercpe.def",
         },
         "monkeypox": {
             "display_name": "Monkeypox",
@@ -101,7 +101,7 @@ DISEASE_CATALOG = {
             "aliases": ["chikungunya", "chikun"],
             "csv_aliases": ["chikungunya"],
             "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/doencas-e-agravos-de-notificacao-de-2007-em-diante-sinan/",
-            "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/chikun",
+            "datasus_tabnet": "https://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/chikunpe.def",
         },
         "oropouche": {
             "display_name": "Febre Oropouche",
@@ -794,6 +794,42 @@ def get_realtime_municipio() -> tuple[dict, int]:
 
     REALTIME_CACHE[cache_key] = (now_ts, response)
     return jsonify(response), 200
+
+
+@app.get("/api/datasus/live/<disease_key>")
+def get_datasus_live_data(disease_key: str) -> tuple[dict, int]:
+    """Fetch the latest table published by the configured official TABNET form."""
+    resolved_key = _resolve_disease_key(disease_key)
+    if not resolved_key:
+        return {"error": "Agravo não reconhecido"}, 404
+    meta = DISEASE_CATALOG[resolved_key]
+    definition_url = meta.get("datasus_tabnet")
+    if not definition_url:
+        return {
+            "status": "unavailable",
+            "disease": resolved_key,
+            "error": "Este agravo não possui formulário TABNET público configurado.",
+            "fallback": _build_disease_payload(resolved_key),
+        }, 503
+    try:
+        from tabnet_live import query_tabnet
+        result = query_tabnet(definition_url)
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "disease": resolved_key,
+            "error": type(exc).__name__,
+            "fallback": _build_disease_payload(resolved_key),
+        }, 503
+    return {
+        "status": "live",
+        "disease": resolved_key,
+        "source": "DATASUS/TABNET",
+        "source_url": result.source_url,
+        "queried_at": result.queried_at,
+        "rows": result.rows,
+        "fallback_used": False,
+    }, 200
 
 
 @app.get("/api/datasus/catalog")
