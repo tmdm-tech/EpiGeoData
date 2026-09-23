@@ -201,7 +201,10 @@ def plot_base_map(
     ax.set_title(title, fontsize=15, fontweight="bold", pad=10)
     add_cartographic_elements(ax)
     fig.text(0.01, 0.01, "Fonte: IBGE (malha municipal 2020, SIRGAS 2000)", fontsize=9, color="#555555")
-    try:\n        fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")\n    finally:\n        plt.close(fig)
+    try:
+        fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")
+    finally:
+        plt.close(fig)
 
 
 def plot_marked_heatmap(
@@ -251,7 +254,10 @@ def plot_marked_heatmap(
         fontsize=9,
         color="#555555",
     )
-    try:\n        fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")\n    finally:\n        plt.close(fig)
+    try:
+        fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")
+    finally:
+        plt.close(fig)
 
 
 def plot_combined_panel(
