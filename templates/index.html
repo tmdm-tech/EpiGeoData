@@ -1674,7 +1674,7 @@
       let gwrMarkerLayer = null;
       let lastProfessionalMapUrl = "";
       let pernambucoCartographyCache = null;
-      const institutionalProfessionalMapTitle = "EpiGeoData | Mapa Coropletico Cientifico - Pernambuco";
+      const institutionalProfessionalMapTitle = "EpiGeoData | Mapa Coroplético Científico - Pernambuco";
       const preparedHeatmapInputName = "municpios_pe";
 
       const diseaseApiKeyByName = {
@@ -2405,7 +2405,9 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               disease_key: diseaseKey,
-              title
+              title,
+              analysis_mode: analysisModeSelect?.value || selectedDemoMode || "choropleth",
+              selected_years: Array.from(selectedYears).map(Number).filter(Number.isFinite).sort((a,b)=>a-b)
             })
           });
 
