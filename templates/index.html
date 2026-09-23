@@ -3984,6 +3984,7 @@
               diseaseDataSource +
               "</small>"
           );
+          refreshDemonstratorFromSelection("agravo atualizado");
           await autoGenerateIfReady();
         });
       });
@@ -3997,6 +3998,7 @@
               (Array.from(selectedClimates).join(", ") || "nenhuma") +
               "</b>."
           );
+          refreshDemonstratorFromSelection("clima atualizado");
           await autoGenerateIfReady();
         });
       });
@@ -4025,6 +4027,7 @@
             }
             renderYearButtons();
             updateSelectionStatus();
+            refreshDemonstratorFromSelection("anos atualizados");
           });
         });
       }
@@ -4035,24 +4038,28 @@
         }
         renderYearButtons();
         updateSelectionStatus();
+        refreshDemonstratorFromSelection("anos atualizados");
       });
 
       clearYearsBtn.addEventListener("click", () => {
         selectedYears.clear();
         renderYearButtons();
         updateSelectionStatus();
+        refreshDemonstratorFromSelection("anos atualizados");
       });
 
       socioVariableSelect.addEventListener("change", () => {
         selectedSocioVariable = socioVariableSelect.value;
         updateSelectionStatus();
         const label = socioMetadata[selectedSocioVariable].label;
+        refreshDemonstratorFromSelection("variavel IBGE atualizada");
         updateRobotMessage("Variável sociodemográfica ativa: <b>" + label + "</b>.");
       });
 
       socioScopeSelect.addEventListener("change", () => {
         selectedSocioScope = socioScopeSelect.value;
         updateSelectionStatus();
+        refreshDemonstratorFromSelection("escopo IBGE atualizado");
         updateRobotMessage(
           "Escopo sociodemográfico ativo: <b>" +
             (selectedSocioScope === "geres" ? "Nível GERES" : "Municipal geral") +
@@ -4078,6 +4085,7 @@
         await drawGeres(activeGeres);
         robotWiggleEarring();
         updateSelectionStatus();
+        refreshDemonstratorFromSelection("GERES atualizada");
         updateRobotMessage("GERES selecionada: <b>" + (activeGeres === "ALL" ? "Todas as GERES" : activeGeres) + "</b>.");
       });
 
@@ -4090,6 +4098,7 @@
         const municipioLabel = municipioSelect.options[municipioSelect.selectedIndex]?.text || "";
         await drawMunicipioById(municipioId, municipioLabel);
         updateSelectionStatus();
+        refreshDemonstratorFromSelection("municipio atualizado");
         if (municipioId) {
           robotSmile();
           updateRobotMessage("Municipio selecionado: <b>" + municipioLabel + "</b>.");
