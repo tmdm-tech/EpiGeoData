@@ -15,7 +15,6 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
-import geobr
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -28,6 +27,7 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = BASE_DIR / "static" / "maps"
 TARGET_CRS = "EPSG:5880"  # SIRGAS 2000 / Brazil Polyconic (metros)
 INPUT_CRS = "EPSG:4674"  # SIRGAS 2000 geographico (lat/lon)
+CARTOGRAPHY_PATH = BASE_DIR / "data" / "municipios_pe_ibge.geojson"
 
 
 @dataclass
@@ -93,8 +93,12 @@ def read_input_table(input_path: Path) -> pd.DataFrame:
 
 
 def load_municipal_boundaries_pe() -> gpd.GeoDataFrame:
-    munis = geobr.read_municipality(code_muni="PE", year=2020, simplified=True)
-    munis = munis.to_crs(INPUT_CRS)
+    """Carrega a malha municipal versionada no repositorio, sem depender de rede."""
+    if not CARTOGRAPHY_PATH.exists():
+        raise FileNotFoundError(f"Cartografia municipal nao encontrada em {CARTOGRAPHY_PATH}")
+    munis = gpd.read_file(CARTOGRAPHY_PATH).copy().to_crs(INPUT_CRS)
+    if "name_muni" not in munis.columns:
+        raise ValueError("Cartografia municipal sem a coluna obrigatoria 'name_muni'.")
     munis["municipio_norm"] = munis["name_muni"].map(normalize_text)
     return munis
 
