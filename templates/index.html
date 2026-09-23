@@ -4074,6 +4074,7 @@
             renderYearButtons();
             updateSelectionStatus();
             refreshDemonstratorFromSelection("anos atualizados");
+            scheduleRealtimeScientificRefresh("anos atualizados");
           });
         });
       }
@@ -4085,6 +4086,7 @@
         renderYearButtons();
         updateSelectionStatus();
         refreshDemonstratorFromSelection("anos atualizados");
+        scheduleRealtimeScientificRefresh("anos atualizados");
       });
 
       clearYearsBtn.addEventListener("click", () => {
@@ -4092,6 +4094,7 @@
         renderYearButtons();
         updateSelectionStatus();
         refreshDemonstratorFromSelection("anos atualizados");
+        scheduleRealtimeScientificRefresh("anos atualizados");
       });
 
       socioVariableSelect.addEventListener("change", () => {
@@ -4099,6 +4102,7 @@
         updateSelectionStatus();
         const label = socioMetadata[selectedSocioVariable].label;
         refreshDemonstratorFromSelection("variavel IBGE atualizada");
+        scheduleRealtimeScientificRefresh("variável IBGE atualizada");
         updateRobotMessage("Variável sociodemográfica ativa: <b>" + label + "</b>.");
       });
 
@@ -4106,6 +4110,7 @@
         selectedSocioScope = socioScopeSelect.value;
         updateSelectionStatus();
         refreshDemonstratorFromSelection("escopo IBGE atualizado");
+        scheduleRealtimeScientificRefresh("escopo IBGE atualizado");
         updateRobotMessage(
           "Escopo sociodemográfico ativo: <b>" +
             (selectedSocioScope === "geres" ? "Nível GERES" : "Municipal geral") +
@@ -4132,6 +4137,7 @@
         robotWiggleEarring();
         updateSelectionStatus();
         refreshDemonstratorFromSelection("GERES atualizada");
+        scheduleRealtimeScientificRefresh("GERES atualizada");
         updateRobotMessage("GERES selecionada: <b>" + (activeGeres === "ALL" ? "Todas as GERES" : activeGeres) + "</b>.");
       });
 
@@ -4145,6 +4151,7 @@
         await drawMunicipioById(municipioId, municipioLabel);
         updateSelectionStatus();
         refreshDemonstratorFromSelection("municipio atualizado");
+        scheduleRealtimeScientificRefresh("município atualizado");
         if (municipioId) {
           robotSmile();
           updateRobotMessage("Municipio selecionado: <b>" + municipioLabel + "</b>.");
