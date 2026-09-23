@@ -857,6 +857,19 @@
         display: block;
       }
 
+      .demo-selection-summary {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(14, 10, 24, 0.78);
+        border: 1px solid rgba(155, 121, 217, 0.18);
+        font-size: 11px;
+        color: #ead8ff;
+      }
+      .demo-selection-summary strong { color: #c4f6ff; }
+
       .demo-meta {
         display: flex;
         flex-wrap: wrap;
@@ -1387,6 +1400,7 @@
                 <p class="demo-title">Demonstrador em Imagem (tempo real)</p>
                 <canvas id="demoCanvas" width="960" height="620"></canvas>
                 <img id="professionalMapPreview" class="professional-map-preview" alt="Mapa profissional gerado no backend" />
+                <div class="demo-selection-summary" id="demoSelectionSummary" aria-live="polite"></div>
                 <div class="demo-meta" id="demoMeta">
                   <span><strong>Status:</strong> aguardando geração de camada</span>
                   <span id="professionalMapStatus"><strong>Cartografia:</strong> aguardando geração no backend</span>
@@ -1508,6 +1522,7 @@
       const mapCard = document.getElementById("mapCard");
       const demoCanvas = document.getElementById("demoCanvas");
       const demoMeta = document.getElementById("demoMeta");
+      const demoSelectionSummary = document.getElementById("demoSelectionSummary");
       const analysisModeSelect = document.getElementById("analysisModeSelect");
       const downloadDemoImageBtn = document.getElementById("downloadDemoImageBtn");
       const downloadProfessionalMapBtn = document.getElementById("downloadProfessionalMapBtn");
@@ -2406,7 +2421,7 @@
 
           lastProfessionalMapUrl = payload.image_url;
           professionalMapPreview.src = payload.image_url;
-          professionalMapPreview.classList.add("visible");
+          professionalMapPreview.classList.remove("visible");
           professionalMapStatus.innerHTML = payload.has_local_data
             ? "<strong>Cartografia:</strong> mapa epidemiológico científico gerado no backend"
             : "<strong>Cartografia:</strong> mapa científico gerado sem série municipal local; layout mantido para consulta DATASUS";
@@ -2434,7 +2449,7 @@
 
           lastProfessionalMapUrl = combinedMap;
           professionalMapPreview.src = combinedMap;
-          professionalMapPreview.classList.add("visible");
+          professionalMapPreview.classList.remove("visible");
           professionalMapStatus.innerHTML =
             "<strong>Cartografia:</strong> fallback de sobreposição preparado usado após falha no mapa epidemiológico";
         } catch (_) {
@@ -3146,6 +3161,26 @@
         return labels[mode] || labels.overlay;
       }
 
+      function refreshDemonstratorFromSelection(reason = "selecao atualizada") {
+        const municipio = municipioSelect.options[municipioSelect.selectedIndex]?.text || "Todos os municipios";
+        const years = Array.from(selectedYears).sort((a, b) => a - b);
+        demoSelectionSummary.innerHTML =
+          "<span><strong>Agravo:</strong> " + selectedDisease.name + "</span>" +
+          "<span><strong>Clima:</strong> " + (Array.from(selectedClimates).join(", ") || "nenhuma") + "</span>" +
+          "<span><strong>Anos:</strong> " + (years.join(", ") || "nenhum") + "</span>" +
+          "<span><strong>IBGE:</strong> " + socioMetadata[selectedSocioVariable].label + " (" + selectedSocioScope + ")</span>" +
+          "<span><strong>GERES:</strong> " + (activeGeres === "ALL" ? "Todas as GERES" : activeGeres) + "</span>" +
+          "<span><strong>Municipio:</strong> " + municipio + "</span>" +
+          "<span><strong>Metodo:</strong> " + describeMode(selectedDemoMode) + "</span>";
+        professionalMapPreview.classList.remove("visible");
+        demoCanvas.style.display = "block";
+        if (currentMapGeoJson || getCurrentBaseFeatureCollection()) {
+          renderDemonstratorImage(reason, { mode: selectedDemoMode });
+        } else {
+          demoMeta.innerHTML = "<span><strong>Status:</strong> aguardando geometria do mapa para refletir a selecao</span>";
+        }
+      }
+
       function renderDemonstratorImage(label, options = {}) {
         lastDemoLabel = label;
         const featureCollection = currentMapGeoJson || getCurrentBaseFeatureCollection();
@@ -3741,8 +3776,7 @@
         const overlayName = climateLabel + " x " + selectedDisease.name + " : " + geresLabel;
         lastDemoLabel = "GWR - " + overlayName;
         addDiseaseLegend(overlayName);
-        selectedDemoMode = "gwr";
-        analysisModeSelect.value = "gwr";
+        // Preserve the analysis method selected by the user.
 
         animateRobot("bounce");
         robotSmile();
@@ -4073,7 +4107,7 @@
 
       analysisModeSelect.addEventListener("change", () => {
         selectedDemoMode = analysisModeSelect.value;
-        void generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
+        refreshDemonstratorFromSelection("metodo atualizado");
       });
 
       downloadDemoImageBtn.addEventListener("click", async () => {
