@@ -25,6 +25,7 @@ REALTIME_CACHE_TTL_SECONDS = 20 * 60
 DEFAULT_PROFESSIONAL_MAP_TITLE = "EpiGeoData | Mapa Coropletico Cientifico - Pernambuco"
 DEFAULT_PREPARED_HEATMAP_FILE = "municpios_pe"
 DEFAULT_PERNAMBUCO_CARTOGRAPHY = Path(__file__).parent / "data" / "municipios_pe_ibge.geojson"
+TABNET_PORTAL_URL = "https://datasus.saude.gov.br/informacoes-de-saude-tabnet/"
 CLIMATE_SOURCE_BINDINGS = {
     "precipitacao": [
         "Precipitacao_INMET_ANA-20260416T16124",
@@ -53,6 +54,7 @@ DISEASE_CATALOG = {
             "aliases": ["scz", "sindrome_congenita_da_zika", "sindrome_congenita_zika", "zika"],
             "csv_aliases": ["scz", "sindrome_congenita_da_zika", "sindrome_congenita_zika", "zika"],
             "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/registro-de-eventos-em-saude-publica-resp-microcefalia/",
+            "tabnet_portal": TABNET_PORTAL_URL,
             "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/tabcgi.exe?resp/cnv/resp",
         },
         "covid_19": {
@@ -60,6 +62,7 @@ DISEASE_CATALOG = {
             "aliases": ["covid_19", "covid19", "covid", "srag_covid"],
             "csv_aliases": ["covid_19", "covid19", "covid"],
             "datasus_page": "https://opendatasus.saude.gov.br/",
+            "tabnet_portal": TABNET_PORTAL_URL,
             "datasus_tabnet": None,
         },
         "dengue": {
@@ -67,6 +70,7 @@ DISEASE_CATALOG = {
             "aliases": ["dengue"],
             "csv_aliases": ["dengue"],
             "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/doencas-e-agravos-de-notificacao-de-2007-em-diante-sinan/",
+            "tabnet_portal": TABNET_PORTAL_URL,
             "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/dengue",
         },
         "esquistossomose": {
@@ -74,6 +78,7 @@ DISEASE_CATALOG = {
             "aliases": ["esquistossomose", "esquisto"],
             "csv_aliases": ["esquistossomose"],
             "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/programa-de-controle-da-esquistossomose-pce/",
+            "tabnet_portal": TABNET_PORTAL_URL,
             "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinan/pce/cnv/pce",
         },
         "tuberculose": {
@@ -81,6 +86,7 @@ DISEASE_CATALOG = {
             "aliases": ["tuberculose", "tuberc"],
             "csv_aliases": ["tuberculose"],
             "datasus_page": "https://datasus.saude.gov.br/acesso-a-informacao/tuberculose-desde-2001-sinan/",
+            "tabnet_portal": TABNET_PORTAL_URL,
             "datasus_tabnet": "http://tabnet.datasus.gov.br/cgi/tabcgi.exe?sinannet/cnv/tuberc",
         },
         "monkeypox": {
@@ -344,6 +350,7 @@ def _build_disease_payload(disease_key: str, include_municipios: bool = True) ->
             else "datasus_live_metadata_only"
         ),
         "datasus": {
+            "portal": meta.get("tabnet_portal", TABNET_PORTAL_URL),
             "page": meta.get("datasus_page"),
             "tabnet": meta.get("datasus_tabnet"),
             "live_status": datasus_live,
@@ -800,7 +807,8 @@ def get_datasus_catalog() -> tuple[dict, int]:
 
     return jsonify(
         {
-            "fonte": "CATALOGO DATASUS com verificacao de disponibilidade ao vivo e fallback local por municipio",
+            "fonte": "DATASUS/TABNET oficial com verificacao online de disponibilidade; series locais permanecem identificadas separadamente",
+            "tabnet_portal": TABNET_PORTAL_URL,
             "agravos": catalog,
             "total_agravos": len(catalog),
         }
