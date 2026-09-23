@@ -15,7 +15,6 @@ import mapclassify as mc
 import matplotlib.pyplot as plt
 import pandas as pd
 import contextily as ctx
-import json
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import FancyArrowPatch, Patch
 from matplotlib.lines import Line2D
@@ -282,11 +281,12 @@ def generate_professional_choropleth(
         # for legacy exports that do not carry a valid territorial code.
         coded = data[data["codigo_ibge"].notna()][["codigo_ibge", "total_casos"]]
         if not coded.empty and municipalities_pe["codigo_ibge"].notna().any():
+            municipalities_pe = municipalities_pe.drop(columns=["total_casos"])
+        if not coded.empty and municipalities_pe["codigo_ibge"].notna().any():
             municipalities_pe = municipalities_pe.merge(coded, on="codigo_ibge", how="left")
         else:
             municipalities_pe = municipalities_pe.merge(data[["join_name", "total_casos"]], on="join_name", how="left")
-        municipalities_pe["total_casos"] = municipalities_pe["total_casos_y"].fillna(0)
-        municipalities_pe = municipalities_pe.drop(columns=[col for col in ["total_casos_x", "total_casos_y"] if col in municipalities_pe.columns])
+        municipalities_pe["total_casos"] = pd.to_numeric(municipalities_pe["total_casos"], errors="coerce").fillna(0)
 
     values = pd.to_numeric(municipalities_pe["total_casos"], errors="coerce")
     has_classified_values = has_local_data and values.notna().any() and int(values.fillna(0).nunique()) > 1
