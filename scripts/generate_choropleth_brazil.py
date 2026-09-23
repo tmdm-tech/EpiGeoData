@@ -295,71 +295,60 @@ def generate_professional_choropleth(
         stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         output_file = OUTPUT_DIR / f"mapa_profissional_{resolved_key}_{stamp}.png"
 
-    # O padrão visual segue o layout de referência: basemap claro + coroplético em roxo + legenda compacta.
-    gdf = municipalities_pe.to_crs("EPSG:3857")
+    # Layout cartografico de publicacao: Pernambuco centralizado, limites municipais,\n    # titulo/subtitulo, legenda externa, norte e escala. Sem basemap remoto.
+    gdf = municipalities_pe.to_crs(TARGET_CRS)
 
-    fig, ax = plt.subplots(figsize=(12, 9), facecolor=BACKGROUND_COLOR)
+    fig, ax = plt.subplots(figsize=(16, 8), facecolor=BACKGROUND_COLOR)
     ax.set_facecolor(BACKGROUND_COLOR)
+    set_standard_map_frame(ax, gdf)
 
-    # Janela fixa no Nordeste para reproduzir composição visual do mapa de referência.
-    bbox_mercator = gpd.GeoSeries([box(-43.1, -11.7, -33.6, -1.7)], crs="EPSG:4326").to_crs("EPSG:3857")
-    minx, miny, maxx, maxy = bbox_mercator.total_bounds
-    ax.set_xlim(minx, maxx)
-    ax.set_ylim(miny, maxy)
-
-    # Basemap remoto removido: CartoDB passou a exigir API key e a
-    # requisicao externa fazia a geracao falhar/ficar dependente de rede.
-    # A malha municipal local do IBGE e suficiente para o mapa cientifico.
-
-    legend_handles: list[Line2D] = []
+    legend_handles: list[Patch] = []
     if has_classified_values:
         classifier = build_classification(values, DEFAULT_SCHEME, DEFAULT_CLASSES)
         class_bins = [float(values.min())] + [float(v) for v in classifier.bins]
         class_ids = pd.Series(pd.NA, index=gdf.index, dtype="object")
         class_ids.loc[values.dropna().index] = classifier.yb.astype(int)
         palette = PALETTE[: len(class_bins) - 1]
-        gdf["plot_color"] = class_ids.map(lambda idx: palette[int(idx)] if pd.notna(idx) else NO_DATA_COLOR)
-
-        gdf.plot(
-            ax=ax,
-            color=gdf["plot_color"],
-            edgecolor=FRAME_COLOR,
-            linewidth=1.1,
-            alpha=0.96,
+        gdf["plot_color"] = class_ids.map(
+            lambda idx: palette[int(idx)] if pd.notna(idx) else NO_DATA_COLOR
         )
-
+        gdf.plot(ax=ax, color=gdf["plot_color"], edgecolor="#666666", linewidth=0.45)
         for idx, color in enumerate(palette):
-            low = class_bins[idx]
-            high = class_bins[idx + 1]
-            label = f"{low:.2f},  {high:.2f}"
             legend_handles.append(
-                Line2D([0], [0], marker="o", color="none", markerfacecolor=color, markeredgecolor=color, markersize=10, label=label)
+                Patch(
+                    facecolor=color,
+                    edgecolor="#333333",
+                    linewidth=0.6,
+                    label=f"{class_bins[idx]:.1f} – {class_bins[idx + 1]:.1f}",
+                )
             )
     else:
-        gdf.plot(ax=ax, color=NO_DATA_COLOR, edgecolor=FRAME_COLOR, linewidth=1.1, alpha=0.96)
+        gdf.plot(ax=ax, color=NO_DATA_COLOR, edgecolor="#777777", linewidth=0.45)
         legend_handles.append(
-            Line2D([0], [0], marker="o", color="none", markerfacecolor=NO_DATA_COLOR, markeredgecolor="#8a8a8a", markersize=10, label="Sem dados")
+            Patch(facecolor=NO_DATA_COLOR, edgecolor="#777777", label="Sem dados locais")
         )
 
+    # Contorno estadual mais espesso, como no modelo cartografico de referencia.
+    gdf.dissolve().boundary.plot(ax=ax, color="#111111", linewidth=1.8)
+    add_cartographic_elements(ax)
+
+    ax.set_title(resolved_title, fontsize=18, fontweight="bold", pad=18, color="#111111")
     legend = ax.legend(
         handles=legend_handles,
-        loc="upper right",
-        frameon=True,
-        framealpha=0.95,
-        facecolor="white",
-        edgecolor="#c8c8c8",
-        fontsize=12,
+        title=variable_label,
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.14),
+        ncol=min(6, max(1, len(legend_handles))),
+        frameon=False,
+        fontsize=9.5,
+        title_fontsize=10.5,
     )
-    for text in legend.get_texts():
-        text.set_color("#1f1f1f")
-
-    ax.set_title(display_name, fontsize=24, fontweight="normal", pad=10, color="#202020")
     ax.set_axis_off()
 
-    fig.subplots_adjust(left=0.03, right=0.98, top=0.90, bottom=0.14)
-    fig.text(0.12, 0.075, "Fonte: DATASUS", fontsize=15, color="#222222")
-    fig.text(0.12, 0.043, "Elaboracao propria", fontsize=15, color="#222222")
-    fig.savefig(output_file, dpi=dpi, facecolor=BACKGROUND_COLOR)
+    fig.subplots_adjust(left=0.025, right=0.985, top=0.88, bottom=0.20)
+    source_label = "DATASUS / cartografia municipal IBGE" if has_local_data else "Cartografia municipal IBGE"
+    fig.text(0.025, 0.025, f"Fonte: {source_label}. Elaboracao: EpiGeoData.", fontsize=8.5, color="#333333")
+    fig.savefig(output_file, dpi=dpi, facecolor=BACKGROUND_COLOR, bbox_inches="tight")
     plt.close(fig)
 
     return ChoroplethResult(
