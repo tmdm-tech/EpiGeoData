@@ -1176,9 +1176,10 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
     except FileNotFoundError as error:
         return {"error": str(error)}, 404
     except Exception as error:  # pragma: no cover - fallback operacional
+        app.logger.exception("professional-overlay failed")
         return {
             "error": "Falha ao gerar mapa profissional",
-            "details": str(error),
+            "details": f"{type(error).__name__}: {error}",
         }, 500
 
     static_root = Path(__file__).parent / "static"
@@ -1267,9 +1268,10 @@ def generate_prepared_heatmap_overlay() -> tuple[dict, int]:
             dpi=300,
         )
     except Exception as error:  # pragma: no cover - erro de runtime em ambiente
+        app.logger.exception("prepared-heatmap-overlay failed")
         return {
             "error": "Falha ao gerar mapas da sobreposicao preparada",
-            "details": str(error),
+            "details": f"{type(error).__name__}: {error}",
             "input_file": str(prepared_file.relative_to(Path(__file__).parent)),
         }, 500
 
