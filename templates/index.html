@@ -1594,7 +1594,7 @@
         "Precipitacao": "precipitacao",
         "Temperatura": "temperatura",
         "Cobertura vegetal": "cobertura_vegetal",
-        "Relevo + Hidrografia": "queimadas"
+        "Relevo + Hidrografia": "relevo"
       };
 
       const realtimeMunicipioCache = new Map();
@@ -1925,7 +1925,8 @@
             precipitacao:      "Precipitação",
             temperatura:       "Temperatura",
             cobertura_vegetal: "Cobertura vegetal",
-            relevo_hidrografia:"Relevo + Hidrografia",
+            relevo:"Relevo + Hidrografia",
+            queimadas:"Queimadas",
           };
 
           let html = "";
@@ -2134,7 +2135,7 @@
 
       async function probeEndpointStatus(url) {
         try {
-          const response = await fetch(url, { cache: "no-store" });
+          const response = await fetch(url, { cache: "force-cache" });
           return response.ok;
         } catch (_) {
           return false;
@@ -2396,6 +2397,11 @@
         }
       }
 
+      let lastProfessionalMapSignature = "";
+      function currentProfessionalMapSignature() {
+        return [resolveDiseaseApiKey(selectedDisease.name), selectedDemoMode, Array.from(selectedYears).map(Number).sort((a,b)=>a-b).join(",")].join("|");
+      }
+
       async function generateProfessionalOverlayMap(title) {
         const diseaseKey = resolveDiseaseApiKey(selectedDisease.name);
 
@@ -2421,6 +2427,7 @@
           }
 
           lastProfessionalMapUrl = payload.image_url;
+          lastProfessionalMapSignature = currentProfessionalMapSignature();
           professionalMapPreview.src = payload.image_url;
           professionalMapPreview.classList.add("visible");
           professionalMapStatus.innerHTML = payload.has_local_data
@@ -4175,7 +4182,9 @@
       async function downloadProfessionalMapFromBackend() {
         // O download deve ser exatamente o mapa produzido pela selecao atual,
         // e nao uma segunda renderizacao generica da rota /download.
-        await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
+        if (!lastProfessionalMapUrl || lastProfessionalMapSignature !== currentProfessionalMapSignature()) {
+          await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
+        }
         if (!lastProfessionalMapUrl) {
           throw new Error("O backend nao entregou o mapa cartografico da selecao atual.");
         }
