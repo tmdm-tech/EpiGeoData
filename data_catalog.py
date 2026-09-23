@@ -14,6 +14,8 @@ DATASETS = (
     {"id": "pce_positividade", "disease": "esquistossomose", "path": "Esquistossomose.csv", "kind": "epidemiological", "indicator": "positividade_percentual", "years": [2001, 2023], "sex_disaggregated": False, "scope": "Pernambuco", "provenance": "PCE - Programa de Controle da Esquistossomose; cabeçalho do arquivo"},
     {"id": "dengue_casos_provaveis", "disease": "dengue", "path": "Dengue.csv", "kind": "epidemiological", "indicator": "casos_provaveis_por_municipio_notificacao", "years": [2014, 2026], "sex_disaggregated": False, "scope": "Pernambuco", "provenance": "SINAN; cabeçalho do arquivo; ano de notificação, não residência"},
     {"id": "chikungunya_casos", "disease": "chikungunya", "path": "Chikungunya.csv", "kind": "epidemiological", "indicator": "casos_por_municipio_notificacao", "years": [2017, 2026], "sex_disaggregated": False, "scope": "Pernambuco", "provenance": "SINAN; cabeçalho do arquivo; ano de notificação, não residência"},
+    {"id": "scz_eventos", "disease": "scz", "path": "SCZ.csv", "kind": "epidemiological", "indicator": "eventos_por_municipio_notificacao", "years": [2015, 2024], "sex_disaggregated": False, "scope": "Pernambuco", "provenance": "RESP-Microcefalia; cabeçalho do arquivo; município e ano de notificação"},
+    {"id": "tuberculose_confirmados", "disease": "tuberculose", "path": "Tuberculose.csv", "kind": "epidemiological", "indicator": "casos_confirmados_por_municipio_notificacao", "years": [2001, 2024], "sex_disaggregated": False, "scope": "Pernambuco", "provenance": "SINAN; cabeçalho do arquivo; município de notificação e ano de diagnóstico"},
     {"id": "temperatura_pontos", "path": "data/climaticas/temperatura.geojson", "kind": "climate", "indicator": "temperatura_c", "sex_disaggregated": False, "scope": "pontos observados no arquivo", "provenance": "GeoJSON versionado no repositório; origem instrumental não documentada"},
     {"id": "malha_municipal", "path": "data/municipios_pe_ibge.geojson", "kind": "cartography", "indicator": None, "scope": "Pernambuco", "provenance": "arquivo municipal versionado no repositório; validar versão oficial"},
     {"id": "epidemiologia_demo", "path": "data/epidemiologia_demo_pe.csv", "kind": "demonstration", "indicator": "não validado", "scope": "Pernambuco", "provenance": "arquivo identificado como demonstração; não usar como observação real"},
@@ -51,7 +53,7 @@ def catalogue(root: Path = ROOT) -> list[dict]:
                 entry["dates_observed"] = sorted({str(f.get("properties", {}).get("data", "")) for f in features})
             except (ValueError, KeyError, TypeError, OSError) as exc:
                 entry["read_error"] = type(exc).__name__
-        if exists and item["id"] in ("pce_positividade", "dengue_casos_provaveis", "chikungunya_casos"):
+        if exists and item.get("kind") == "epidemiological":
             try:
                 entry["columns"], entry["encoding"] = _csv_header(path)
             except (OSError, ValueError, UnicodeError) as exc:
