@@ -16,5 +16,39 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Run all discovered repository unit and integration tests
         run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Probe official TABNET forms
+        run: |
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from urllib.request import Request, urlopen
+
+          urls = [
+              "https://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/denguepe.def",
+              "https://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/chikunpe.def",
+              "https://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/tubercpe.def",
+              "https://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinan/pce/cnv/pcepe.def",
+              "https://tabnet.datasus.gov.br/cgi/deftohtm.exe?resp/cnv/resppe.def",
+          ]
+          class P(HTMLParser):
+              def __init__(self):
+                  super().__init__(); self.forms=[]; self.inputs=[]; self.selects=[]
+              def handle_starttag(self, tag, attrs):
+                  d=dict(attrs)
+                  if tag=="form": self.forms.append(d)
+                  elif tag=="input": self.inputs.append(d)
+                  elif tag=="select": self.selects.append(d)
+          for url in urls:
+              try:
+                  req=Request(url,headers={"User-Agent":"EpiGeoData/1.0"})
+                  with urlopen(req,timeout=20) as r:
+                      body=r.read(1000000).decode("latin-1",errors="replace")
+                      p=P(); p.feed(body)
+                      print("TABNET",url,"HTTP",r.status,"FINAL",r.url)
+                      print("FORMS",p.forms[:2])
+                      print("INPUTS",p.inputs[:20])
+                      print("SELECTS",p.selects[:20])
+              except Exception as e:
+                  print("TABNET",url,"ERROR",repr(e))
+          PY
       - name: Compile guarded entrypoints and harmonization
         run: python -m py_compile stage3_validation.py stage3_harmonization.py stage3_pipeline_gate.py scripts/run_validated_gwr.py wsgi_catalog.py
