@@ -1339,8 +1339,8 @@ def generate_runtime_gwr():
         display_ibge_codes=None
         display_scope="Pernambuco"
         if geres and geres.upper() not in ("ALL","TODAS AS GERES"):
-            # Reuse the SES-PE territorial membership maintained in the scientific
-            # cartographic module; filter before fitting, never after the model.
+            # GERES defines the cartographic window. The GWR itself is fitted on
+            # the complete statewide municipality-year panel to preserve support.
             from scripts.generate_choropleth_brazil import load_pernambuco_municipalities, normalize_text
             geres_members={
               "I GERES":["Abreu e Lima","Araçoiaba","Cabo de Santo Agostinho","Camaragibe","Chã de Alegria","Chã Grande","Glória do Goitá","Igarassu","Ilha de Itamaracá","Ipojuca","Itapissuma","Jaboatão dos Guararapes","Moreno","Olinda","Paulista","Pombos","Recife","São Lourenço da Mata","Vitória de Santo Antão"],
@@ -1383,7 +1383,9 @@ def generate_runtime_gwr():
         maps={field:"/static/"+path.relative_to(root).as_posix() for field,path in result.map_paths.items()}
         return jsonify({"ok":True,"method":"GWR","year":year,"disease_key":disease_key,
                         "predictors":predictors,"bandwidth":result.gwr_bandwidth,
-                        "records_used":result.records_used,"maps":maps,
+                        "records_used":result.records_used,
+                        "records_displayed":len(display_ibge_codes) if display_ibge_codes is not None else result.records_used,
+                        "maps":maps,
                         "joined_geojson":"/static/"+result.joined_data_path.relative_to(root).as_posix() if result.joined_data_path else None,
                         "methodology":meta["method"] + "; ajuste estadual e recorte cartográfico da seleção territorial",
                         "display_scope":display_scope,
