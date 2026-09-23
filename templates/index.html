@@ -2455,7 +2455,7 @@
             "<strong>Cartografia:</strong> fallback de sobreposição preparado usado após falha no mapa epidemiológico";
         } catch (_) {
           lastProfessionalMapUrl = "";
-          professionalMapPreview.classList.add("visible");
+          professionalMapPreview.classList.remove("visible");
           professionalMapStatus.innerHTML = "<strong>Cartografia:</strong> falha ao gerar mapa no backend";
         }
       }
