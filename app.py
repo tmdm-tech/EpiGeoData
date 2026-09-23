@@ -1334,6 +1334,35 @@ def generate_runtime_gwr():
         return jsonify({"ok":False,"error":"Selecione Temperatura e/ou Precipitação para o GWR histórico validado"}),422
     try:
         panel,meta=_build_runtime_gwr_panel(disease_key,year,predictors)
+        geres=str(payload.get("geres","ALL")).strip()
+        municipio_id=str(payload.get("municipio_id","")).strip()
+        if geres and geres.upper() not in ("ALL","TODAS AS GERES"):
+            # Reuse the SES-PE territorial membership maintained in the scientific
+            # cartographic module; filter before fitting, never after the model.
+            from scripts.generate_choropleth_brazil import normalize_text
+            geres_members={
+              "I GERES":["Abreu e Lima","Araçoiaba","Cabo de Santo Agostinho","Camaragibe","Chã de Alegria","Chã Grande","Glória do Goitá","Igarassu","Ilha de Itamaracá","Ipojuca","Itapissuma","Jaboatão dos Guararapes","Moreno","Olinda","Paulista","Pombos","Recife","São Lourenço da Mata","Vitória de Santo Antão"],
+              "II GERES":["Bom Jardim","Buenos Aires","Carpina","Casinhas","Cumaru","Feira Nova","João Alfredo","Lagoa de Itaenga","Lagoa do Carro","Limoeiro","Machados","Nazaré da Mata","Orobó","Passira","Paudalho","Salgadinho","Surubim","Tracunhaém","Vertente do Lério","Vicência"],
+              "III GERES":["Água Preta","Amaraji","Barreiros","Belém de Maria","Catende","Cortês","Escada","Gameleira","Jaqueira","Joaquim Nabuco","Lagoa dos Gatos","Maraial","Palmares","Primavera","Quipapá","Ribeirão","Rio Formoso","São Benedito do Sul","São José da Coroa Grande","Sirinhaém","Tamandaré","Xexéu"],
+              "IV GERES":["Agrestina","Alagoinha","Altinho","Barra de Guabiraba","Belo Jardim","Bezerros","Bonito","Brejo da Madre de Deus","Cachoeirinha","Camocim de São Félix","Caruaru","Cupira","Frei Miguelinho","Gravatá","Ibirajuba","Jataúba","Jurema","Panelas","Pesqueira","Poção","Riacho das Almas","Sairé","Sanharó","Santa Cruz do Capibaribe","Santa Maria do Cambucá","São Bento do Una","São Caetano","São Joaquim do Monte","Tacaimbó","Taquaritinga do Norte","Toritama","Vertentes"],
+              "V GERES":["Águas Belas","Angelim","Bom Conselho","Brejão","Caetés","Calçado","Canhotinho","Capoeiras","Correntes","Garanhuns","Iati","Itaíba","Jucati","Jupi","Lagoa do Ouro","Lajedo","Palmeirina","Paranatama","Saloá","São João","Terezinha"],
+              "VI GERES":["Arcoverde","Buíque","Custódia","Ibimirim","Inajá","Jatobá","Manari","Pedra","Petrolândia","Sertânia","Tacaratu","Tupanatinga","Venturosa"],
+              "VII GERES":["Belém do São Francisco","Cedro","Mirandiba","Salgueiro","Serrita","Terra Nova","Verdejante"],
+              "VIII GERES":["Afrânio","Cabrobó","Dormentes","Lagoa Grande","Orocó","Petrolina","Santa Maria da Boa Vista"],
+              "IX GERES":["Araripina","Bodocó","Exu","Granito","Ipubi","Moreilândia","Ouricuri","Parnamirim","Santa Cruz","Santa Filomena","Trindade"],
+              "X GERES":["Afogados da Ingazeira","Brejinho","Carnaíba","Iguaracy","Ingazeira","Itapetim","Quixaba","Santa Terezinha","São José do Egito","Solidão","Tabira","Tuparetama"],
+              "XI GERES":["Betânia","Calumbi","Carnaubeira da Penha","Flores","Floresta","Itacuruba","Santa Cruz da Baixa Verde","São José do Belmonte","Serra Talhada","Triunfo"],
+              "XII GERES":["Aliança","Camutanga","Condado","Ferreiros","Goiana","Itambé","Itaquitinga","Macaparana","São Vicente Férrer","Timbaúba"]
+            }
+            members=geres_members.get(geres.upper())
+            if not members: raise ValueError(f"GERES desconhecida: {geres}")
+            gdf_names=load_pernambuco_municipalities()[["codigo_ibge","name_muni"]].copy()
+            allowed=set(gdf_names[gdf_names["name_muni"].map(normalize_text).isin({normalize_text(x) for x in members})]["codigo_ibge"].astype(str))
+            panel=panel[panel["municipio_ibge"].astype(str).isin(allowed)].copy()
+        if municipio_id:
+            panel=panel[panel["municipio_ibge"].astype(str)==municipio_id.replace(".0","")].copy()
+        if len(panel) < max(30,len(predictors)+10):
+            raise ValueError(f"Recorte territorial possui apenas {len(panel)} municípios completos; GWR não é estável neste recorte.")
         runtime=Path(__file__).parent/"static"/"maps"/"runtime_gwr"
         runtime.mkdir(parents=True,exist_ok=True)
         panel_path=runtime/f"painel_{_normalize_token(disease_key)}_{year}_{'_'.join(predictors)}.csv"
