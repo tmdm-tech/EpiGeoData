@@ -1356,6 +1356,7 @@ def generate_epidemiological_gwr_maps_api() -> tuple[dict, int]:
             target_crs=str(payload.get("target_crs", "EPSG:31985")).strip(),
             dpi=int(payload.get("dpi", 300)),
             title_prefix=str(payload.get("title_prefix", "Pernambuco - Analise Espacial Epidemiologica")).strip(),
+            analysis_year=int(payload.get("analysis_year")) if payload.get("analysis_year") is not None else None,
         )
     except ValueError as error:
         return {"error": str(error)}, 400
