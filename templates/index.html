@@ -3875,7 +3875,7 @@
       async function loadPernambucoBase() {
         map = L.map("map", { zoomControl: true }).setView([-8.4, -37.9], 7);
 
-        const baseMaps={osm:["https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png","&copy; OpenStreetMap contributors"],light:["https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png","&copy; OpenStreetMap &copy; CARTO"],topo:["https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png","Map data &copy; OpenStreetMap, SRTM | Map style &copy; OpenTopoMap"]};
+        const baseMaps={osm:["https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png","&copy; OpenStreetMap contributors"],light:["https://tile.openstreetmap.org/{z}/{x}/{y}.png","&copy; OpenStreetMap contributors"],topo:["https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png","Map data &copy; OpenStreetMap, SRTM | Map style &copy; OpenTopoMap"]};
         const setBaseMap=(key)=>{if(baseTileLayer)map.removeLayer(baseTileLayer);const spec=baseMaps[key]||baseMaps.osm;baseTileLayer=L.tileLayer(spec[0],{maxZoom:19,attribution:spec[1]}).addTo(map);};
         setBaseMap(baseMapSelect?.value||"osm");baseMapSelect?.addEventListener("change",()=>setBaseMap(baseMapSelect.value));
 
