@@ -1,0 +1,21 @@
+# Dependencies and caches
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Runtime/generated outputs
+static/maps/*
+!static/maps/.gitkeep
+data/uploads/*
+!data/uploads/.gitkeep
+
+# Local OS/editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Large local archives not used by the deployed application
+Inventario06_04_2026.zip
