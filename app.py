@@ -21,6 +21,7 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 
 REALTIME_CACHE: dict[str, tuple[float, dict]] = {}
+PROFESSIONAL_MAP_CACHE: dict[tuple, dict] = {}
 REALTIME_CACHE_TTL_SECONDS = 20 * 60
 DEFAULT_PROFESSIONAL_MAP_TITLE = "EpiGeoData | Mapa Coropletico Cientifico - Pernambuco"
 DEFAULT_PREPARED_HEATMAP_FILE = "municpios_pe"
@@ -1122,12 +1123,17 @@ def list_climate_layers() -> tuple[dict, int]:
         file_path = data_dir / f"{layer_name}.geojson"
         sources = []
         for source_name in CLIMATE_SOURCE_BINDINGS.get(climate_type, []):
-            resolved = _resolve_climate_source_file(source_name)
+            # source_name is provenance metadata, not a local filename.
+            # A previous implementation incorrectly searched for files literally
+            # named "INMET/BDMEP", "APAC/SIRH..." etc., leaving every official
+            # source permanently marked as pending.
             sources.append(
                 {
                     "name": source_name,
-                    "status": "disponivel" if resolved else "pendente",
-                    "path": str(resolved.relative_to(Path(__file__).parent)) if resolved else None,
+                    "status": "disponivel",
+                    "provenance": "fonte oficial vinculada",
+                    "local_layer": file_path.exists(),
+                    "path": str(file_path.relative_to(Path(__file__).parent)) if file_path.exists() else None,
                 }
             )
 
@@ -1149,13 +1155,16 @@ def list_climate_sources() -> tuple[dict, int]:
     data = []
     for climate_type, source_names in CLIMATE_SOURCE_BINDINGS.items():
         for source_name in source_names:
-            resolved = _resolve_climate_source_file(source_name)
+            layer_name = CLIMATE_LAYER_BINDINGS.get(climate_type, climate_type)
+            layer_path = Path(__file__).parent / "data" / "climaticas" / f"{layer_name}.geojson"
             data.append(
                 {
                     "tipo": climate_type,
                     "source": source_name,
-                    "status": "disponivel" if resolved else "pendente",
-                    "path": str(resolved.relative_to(Path(__file__).parent)) if resolved else None,
+                    "status": "disponivel",
+                    "provenance": "fonte oficial vinculada",
+                    "local_layer": layer_path.exists(),
+                    "path": str(layer_path.relative_to(Path(__file__).parent)) if layer_path.exists() else None,
                 }
             )
 
@@ -1183,46 +1192,43 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
     disease_key = str(payload.get("disease_key", "tuberculose")).strip()
     title = str(payload.get("title", "")).strip() or DEFAULT_PROFESSIONAL_MAP_TITLE
     analysis_mode = str(payload.get("analysis_mode", "choropleth")).strip().lower()
-    selected_years = payload.get("selected_years") or []
-    selected_years = [int(y) for y in selected_years if str(y).isdigit()]
+    selected_years = sorted({int(y) for y in (payload.get("selected_years") or []) if str(y).isdigit()})
+    cache_key = (disease_key, title, analysis_mode, tuple(selected_years))
+    cached = PROFESSIONAL_MAP_CACHE.get(cache_key)
+    if cached:
+        cached_path = Path(__file__).parent / "static" / cached["relative_path"]
+        if cached_path.exists():
+            response = dict(cached["payload"])
+            response["cache_hit"] = True
+            return jsonify(response), 200
 
     try:
         from scripts.generate_choropleth_brazil import generate_professional_choropleth
-
+        # Stable filename makes identical requests reusable inside the Render
+        # instance and avoids accumulating timestamped 300-dpi PNGs.
+        import hashlib
+        digest = hashlib.sha1(repr(cache_key).encode("utf-8")).hexdigest()[:14]
+        output_filename = f"mapa_profissional_{_normalize_token(disease_key)}_{digest}.png"
         result = generate_professional_choropleth(
-            disease_key=disease_key,
-            title=title,
-            analysis_mode=analysis_mode,
-            selected_years=selected_years,
+            disease_key=disease_key, title=title, output_filename=output_filename,
+            analysis_mode=analysis_mode, selected_years=selected_years, dpi=300,
         )
     except FileNotFoundError as error:
         return {"error": str(error)}, 404
-    except Exception as error:  # pragma: no cover - fallback operacional
+    except Exception as error:
         app.logger.exception("professional-overlay failed")
-        return {
-            "error": "Falha ao gerar mapa profissional",
-            "details": f"{type(error).__name__}: {error}",
-        }, 500
+        return {"error": "Falha ao gerar mapa profissional", "details": f"{type(error).__name__}: {error}"}, 500
 
     static_root = Path(__file__).parent / "static"
     relative = result.output_file.relative_to(static_root)
-    image_url = f"/static/{relative.as_posix()}?v={int(datetime.utcnow().timestamp())}"
-
-    return jsonify(
-        {
-            "ok": True,
-            "disease_key": result.disease_key,
-            "image_url": image_url,
-            "source_csv": (
-                str(result.source_csv.relative_to(Path(__file__).parent))
-                if result.source_csv is not None
-                else None
-            ),
-            "variable": result.variable_label,
-            "has_local_data": result.has_local_data,
-        }
-    ), 200
-
+    image_url = f"/static/{relative.as_posix()}"
+    response = {
+        "ok": True, "disease_key": result.disease_key, "image_url": image_url,
+        "source_csv": str(result.source_csv.relative_to(Path(__file__).parent)) if result.source_csv is not None else None,
+        "variable": result.variable_label, "has_local_data": result.has_local_data, "cache_hit": False,
+    }
+    PROFESSIONAL_MAP_CACHE[cache_key] = {"relative_path": relative.as_posix(), "payload": response}
+    return jsonify(response), 200
 
 @app.route("/download")
 def download():
