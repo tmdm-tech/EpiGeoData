@@ -19,3 +19,10 @@ data/uploads/*
 
 # Large local archives not used by the deployed application
 Inventario06_04_2026.zip
+
+# Raw acquisition archives / desktop installers excluded from web deploy
+Instalador Hidro Build 1.4.0.83.zip
+*caatinga_biome.zip
+residual_biome_caatinga_v*.zip
+Precipitac*a*INMET*ANA*.zip
+Precipitação_INMET_ANA*.zip

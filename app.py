@@ -27,18 +27,12 @@ DEFAULT_PREPARED_HEATMAP_FILE = "municpios_pe"
 DEFAULT_PERNAMBUCO_CARTOGRAPHY = Path(__file__).parent / "data" / "municipios_pe_ibge.geojson"
 TABNET_PORTAL_URL = "https://datasus.saude.gov.br/informacoes-de-saude-tabnet/"
 CLIMATE_SOURCE_BINDINGS = {
-    "precipitacao": [
-        "Precipitacao_INMET_ANA-20260416T16124",
-        "Precipitação_INMET_ANA-20260416T16124",
-    ],
-    "cobertura_vegetal": [
-        "states_caatinga_biome.zip",
-        "residual_biome_caatinga_v20260330.zip",
-        "conservation_units_caatinga_biome.zip",
-    ],
-    "relevo_hidrografia": [
-        "Instalador Hidro Build 1.4.0.83.zip",
-    ],
+    # Keep only deploy-ready scientific layers. Raw acquisition archives and
+    # desktop installers do not belong in the web runtime.
+    "precipitacao": ["precipitacao.geojson"],
+    "cobertura_vegetal": ["cobertura_vegetal.geojson"],
+    # Relevo is supplied in real time by OpenTopoData in /api/environment/status.
+    "relevo_hidrografia": [],
 }
 
 CLIMATE_LAYER_BINDINGS = {
