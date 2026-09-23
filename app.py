@@ -1319,6 +1319,44 @@ def gwr_readiness(disease_key: str, year: int):
         return jsonify({"ready":False,"year":year,"disease_key":disease_key,"predictors":predictors,"reason":str(exc)}),422
 
 
+@app.post("/api/maps/gwr-runtime")
+def generate_runtime_gwr():
+    payload=request.get_json(silent=True) or {}
+    disease_key=str(payload.get("disease_key","tuberculose")).strip()
+    years=sorted({int(y) for y in (payload.get("selected_years") or []) if str(y).isdigit()})
+    if len(years)!=1:
+        return jsonify({"ok":False,"error":"GWR exige exatamente um ano analítico por ajuste"}),422
+    year=years[0]
+    climate_keys={_normalize_token(v) for v in (payload.get("selected_climates") or [])}
+    mapping={"temperatura":"temperatura_media_c","precipitacao":"precipitacao_anual_mm"}
+    predictors=[mapping[k] for k in ("temperatura","precipitacao") if k in climate_keys]
+    if not predictors:
+        return jsonify({"ok":False,"error":"Selecione Temperatura e/ou Precipitação para o GWR histórico validado"}),422
+    try:
+        panel,meta=_build_runtime_gwr_panel(disease_key,year,predictors)
+        runtime=Path(__file__).parent/"static"/"maps"/"runtime_gwr"
+        runtime.mkdir(parents=True,exist_ok=True)
+        panel_path=runtime/f"painel_{_normalize_token(disease_key)}_{year}_{'_'.join(predictors)}.csv"
+        panel.to_csv(panel_path,index=False)
+        from scripts.generate_epidemiological_gwr_maps import generate_epidemiological_gwr_maps
+        result=generate_epidemiological_gwr_maps(
+            panel_path,DEFAULT_PERNAMBUCO_CARTOGRAPHY,"desfecho",predictors,
+            output_dir=runtime,analysis_year=year,save_joined_geodata=True,
+            title_prefix=f"EpiGeoData | GWR {disease_key} x {' + '.join(predictors)}",
+        )
+        root=Path(__file__).parent/"static"
+        maps={field:"/static/"+path.relative_to(root).as_posix() for field,path in result.map_paths.items()}
+        return jsonify({"ok":True,"method":"GWR","year":year,"disease_key":disease_key,
+                        "predictors":predictors,"bandwidth":result.gwr_bandwidth,
+                        "records_used":result.records_used,"maps":maps,
+                        "joined_geojson":"/static/"+result.joined_data_path.relative_to(root).as_posix() if result.joined_data_path else None,
+                        "methodology":meta["method"],
+                        "sources":{"climate":"INMET Dados Históricos Anuais","epidemiology":"DATASUS/TABNET","territory":"IBGE Malha Municipal"}}),200
+    except Exception as exc:
+        app.logger.exception("runtime GWR failed")
+        return jsonify({"ok":False,"error":"GWR não autorizado para esta seleção","details":str(exc)}),422
+
+
 @app.post("/api/maps/professional-overlay")
 def generate_professional_overlay_map() -> tuple[dict, int]:
     payload = request.get_json(silent=True) or {}
