@@ -7,7 +7,7 @@ import zipfile
 from functools import lru_cache
 from pathlib import Path
 from datetime import datetime
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
@@ -27,19 +27,19 @@ DEFAULT_PREPARED_HEATMAP_FILE = "municpios_pe"
 DEFAULT_PERNAMBUCO_CARTOGRAPHY = Path(__file__).parent / "data" / "municipios_pe_ibge.geojson"
 TABNET_PORTAL_URL = "https://datasus.saude.gov.br/informacoes-de-saude-tabnet/"
 CLIMATE_SOURCE_BINDINGS = {
-    # Keep only deploy-ready scientific layers. Raw acquisition archives and
-    # desktop installers do not belong in the web runtime.
-    "precipitacao": ["precipitacao.geojson"],
-    "cobertura_vegetal": ["cobertura_vegetal.geojson"],
-    # Relevo is supplied in real time by OpenTopoData in /api/environment/status.
-    "relevo_hidrografia": [],
+    "precipitacao": ["APAC/SIRH ArcGIS REST", "INMET/BDMEP"],
+    "temperatura": ["INMET/BDMEP"],
+    "cobertura_vegetal": ["INPE/TerraBrasilis PRODES-DETER"],
+    "queimadas": ["INPE/Programa Queimadas"],
+    "relevo": ["INPE/TOPODATA"],
 }
 
 CLIMATE_LAYER_BINDINGS = {
     "precipitacao": "precipitacao",
     "temperatura": "temperatura",
     "cobertura_vegetal": "cobertura_vegetal",
-    "relevo_hidrografia": "queimadas",
+    "queimadas": "queimadas",
+    "relevo": "relevo",
 }
 
 DISEASE_CATALOG = {
@@ -702,54 +702,57 @@ def _http_get_json(base_url: str, params: dict[str, str | float | int] | None = 
         return None
 
 
-def _fetch_realtime_environment(lat: float, lon: float) -> dict:
-    climate = _http_get_json(
-        "https://api.open-meteo.com/v1/forecast",
-        {
-            "latitude": lat,
-            "longitude": lon,
-            "current": "temperature_2m,precipitation",
-            "timezone": "auto",
-        },
-    ) or {}
+OFFICIAL_ENVIRONMENT_SOURCES = {
+    "apac_precipitacao": "https://geoportal.apac.pe.gov.br/server/rest/services/met_monitoramento_chuvas_pe/MapServer/4/query",
+    "inmet_bdmep": "https://bdmep.inmet.gov.br/",
+    "inmet_portal": "https://portal.inmet.gov.br/dadoshistoricos",
+    "inpe_terrabrasilis": "https://terrabrasilis.dpi.inpe.br/",
+    "inpe_queimadas": "https://terrabrasilis.dpi.inpe.br/queimadas/portal/dados-abertos/",
+    "inpe_topodata": "http://www.dsr.inpe.br/topodata/",
+}
 
-    topo = _http_get_json(
-        "https://api.open-topo-data.org/v1/aster30m",
-        {"locations": f"{lat},{lon}"},
-    ) or {}
-
-    current = climate.get("current", {}) if isinstance(climate, dict) else {}
-    temperature = current.get("temperature_2m")
-    precipitation = current.get("precipitation")
-
-    elevation = None
-    if isinstance(topo, dict):
-        results = topo.get("results") or []
-        if results and isinstance(results[0], dict):
-            elevation = results[0].get("elevation")
-
-    temp_val = float(temperature) if isinstance(temperature, (int, float)) else 27.0
-    rain_val = float(precipitation) if isinstance(precipitation, (int, float)) else 0.0
-    elev_val = float(elevation) if isinstance(elevation, (int, float)) else 280.0
-
-    vegetation_idx = max(0.0, min(1.0, (rain_val / 15.0) * 0.55 + ((32.0 - temp_val) / 20.0) * 0.45))
-    hydro_idx = max(0.0, min(1.0, (rain_val / 12.0) * 0.7 + (1.0 - min(elev_val / 1200.0, 1.0)) * 0.3))
-
-    return {
-        "pluviosidade_mm_h": round(rain_val, 3),
-        "temperatura_c": round(temp_val, 2),
-        "cobertura_vegetal_idx": round(vegetation_idx, 4),
-        "relevo_elevacao_m": round(elev_val, 2),
-        "hidrografia_proximidade_idx": round(hydro_idx, 4),
-        "fontes": {
-            "pluviosidade": "Open-Meteo",
-            "temperatura": "Open-Meteo",
-            "relevo": "OpenTopoData (ASTER30m)",
-            "cobertura_vegetal": "Índice derivado de chuva+temperatura",
-            "hidrografia": "Índice proxy derivado de chuva+relevo",
-        },
-        "timestamp_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+def _apac_realtime_precipitation(lat: float, lon: float) -> dict:
+    params = {
+        "where": "1=1", "geometry": f"{lon},{lat}", "geometryType": "esriGeometryPoint",
+        "inSR": "4674", "spatialRel": "esriSpatialRelIntersects", "outFields": "*",
+        "returnGeometry": "true", "f": "json",
     }
+    payload = _http_get_json(OFFICIAL_ENVIRONMENT_SOURCES["apac_precipitacao"], params, timeout=15) or {}
+    features = payload.get("features") if isinstance(payload, dict) else None
+    if not features:
+        # A station point rarely intersects the municipal centroid exactly; request
+        # all PE stations and choose the nearest observation deterministically.
+        params.pop("geometry", None); params.pop("geometryType", None); params.pop("spatialRel", None)
+        payload = _http_get_json(OFFICIAL_ENVIRONMENT_SOURCES["apac_precipitacao"], params, timeout=15) or {}
+        features = payload.get("features") if isinstance(payload, dict) else []
+    best = None
+    for feature in features or []:
+        attrs=feature.get("attributes") or {}; geom=feature.get("geometry") or {}
+        x=geom.get("x", attrs.get("longitude")); y=geom.get("y", attrs.get("latitude"))
+        if not isinstance(x,(int,float)) or not isinstance(y,(int,float)): continue
+        dist=(float(x)-lon)**2+(float(y)-lat)**2
+        if best is None or dist<best[0]: best=(dist,attrs,float(y),float(x))
+    if best is None: return {"status":"indisponivel","source":"APAC/SIRH"}
+    a=best[1]
+    return {"status":"live","source":"APAC/SIRH","station":a.get("nome"),"municipio_estacao":a.get("municipio"),
+            "precipitacao_1h_mm":a.get("hora_1"),"precipitacao_24h_mm":a.get("horas_24"),
+            "precipitacao_48h_mm":a.get("horas_48"),"precipitacao_72h_mm":a.get("horas_72"),
+            "ultima_leitura":a.get("ultima_leitura_data_hora"),"lat":best[2],"lon":best[3]}
+
+def _official_environment_catalog() -> dict:
+    return {
+      "precipitacao":{"primary":"APAC/SIRH","historical":"INMET/BDMEP","realtime_endpoint":"/api/environment/apac/precipitacao","sources":[OFFICIAL_ENVIRONMENT_SOURCES["apac_precipitacao"],OFFICIAL_ENVIRONMENT_SOURCES["inmet_bdmep"]]},
+      "temperatura":{"primary":"INMET/BDMEP","mode":"historical/latest published observation","sources":[OFFICIAL_ENVIRONMENT_SOURCES["inmet_bdmep"],OFFICIAL_ENVIRONMENT_SOURCES["inmet_portal"]]},
+      "cobertura_vegetal":{"primary":"INPE/TerraBrasilis","mode":"official latest published product","sources":[OFFICIAL_ENVIRONMENT_SOURCES["inpe_terrabrasilis"]]},
+      "queimadas":{"primary":"INPE/Programa Queimadas","mode":"near-real-time official feed","sources":[OFFICIAL_ENVIRONMENT_SOURCES["inpe_queimadas"]]},
+      "relevo":{"primary":"INPE/TOPODATA","mode":"official static terrain model","sources":[OFFICIAL_ENVIRONMENT_SOURCES["inpe_topodata"]]},
+    }
+
+def _fetch_realtime_environment(lat: float, lon: float) -> dict:
+    apac=_apac_realtime_precipitation(lat,lon)
+    return {"precipitacao":apac,"catalog":_official_environment_catalog(),
+            "note":"No synthetic climate/vegetation/terrain values are generated. Each variable retains its official source and publication cadence.",
+            "timestamp_utc":datetime.utcnow().isoformat(timespec="seconds")+"Z"}
 
 
 SOCIO_IBGE_BINDINGS = {
@@ -789,8 +792,22 @@ def get_sociodemographic_live(variable: str, ibge_code: str):
 
 @app.get("/api/environment/status")
 def environment_status():
-    layers, _ = list_climate_layers()
-    return {"status": "disponivel", "realtime": {"precipitacao": {"status": "disponivel", "source": "Open-Meteo"}, "temperatura": {"status": "disponivel", "source": "Open-Meteo"}, "relevo": {"status": "disponivel", "source": "OpenTopoData ASTER30m"}}, "scientific_layers": layers.get("camadas", []), "note": "Cobertura vegetal e hidrografia derivadas nao sao rotuladas como observacoes oficiais em tempo real."}, 200
+    catalog=_official_environment_catalog()
+    probes={key:[_probe_remote_source(url) for url in meta["sources"]] for key,meta in catalog.items()}
+    return {"status":"disponivel","official_sources":catalog,"availability":probes,
+            "scientific_rule":"Live/latest-published data are not backfilled into historical GWR periods. Historical municipality-period panels require period-matched official observations."},200
+
+@app.get("/api/environment/apac/precipitacao")
+def environment_apac_precipitacao():
+    try: lat=float(request.args.get("lat")); lon=float(request.args.get("lon"))
+    except (TypeError,ValueError): return {"error":"lat e lon numericos sao obrigatorios"},400
+    result=_apac_realtime_precipitation(lat,lon)
+    return result,(200 if result.get("status")=="live" else 503)
+
+@app.get("/api/environment/sources")
+def environment_sources():
+    return {"status":"disponivel","sources":_official_environment_catalog(),
+            "provenance":"APAC + INMET + INPE; no proxy variables"},200
 
 @app.post("/api/realtime/municipio")
 def get_realtime_municipio() -> tuple[dict, int]:
