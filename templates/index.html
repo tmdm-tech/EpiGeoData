@@ -126,6 +126,8 @@
         gap: 10px;
       }
 
+      .map-toolbar{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.map-toolbar button,.map-toolbar select{font-size:11px;padding:7px 9px}.layer-panel{margin-top:8px;border:1px solid rgba(216,185,255,.28);border-radius:12px;background:rgba(8,0,28,.78);padding:10px}.layer-panel h3{margin:0 0 8px;font-size:13px}.layer-row{display:grid;grid-template-columns:28px 1fr auto;gap:7px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:11px}.layer-tools{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.layer-tools label{font-size:10px}.layer-tools input{width:100%}
+
       .year-grid {
         margin-top: 12px;
         display: grid;
@@ -1393,7 +1395,9 @@
             </div>
             <div class="map-shell">
               <div class="map-main">
+                <div class="map-toolbar"><select id="baseMapSelect"><option value="osm">Ruas</option><option value="light">Claro</option><option value="topo">Topográfico</option></select><button class="secondary" id="fitPeBtn" type="button">Enquadrar PE</button><button class="secondary" id="printMapBtn" type="button">Imprimir</button><button class="secondary" id="shareMapBtn" type="button">Compartilhar seleção</button></div>
                 <div id="map" aria-label="Mapa de Pernambuco por GERES e municipio"></div>
+                <div class="layer-panel" id="layerPanel"><h3>Camadas ativas</h3><div id="activeLayerList"><small>As camadas geradas aparecerão aqui.</small></div><div class="layer-tools"><label>Opacidade<input id="layerOpacity" type="range" min="10" max="100" value="70"></label><label>Cor<input id="layerColor" type="color" value="#7646b8"></label></div></div>
                 <div class="map-loading" id="mapLoading">Carregando mapa em segundo plano...</div>
               </div>
               <aside class="demo-panel" aria-label="Demonstrador de sobreposição em imagem">
@@ -1529,6 +1533,11 @@
       const professionalMapPreview = document.getElementById("professionalMapPreview");
       const professionalMapStatus = document.getElementById("professionalMapStatus");
       const selectionStatusList = document.getElementById("selectionStatusList");
+      const baseMapSelect=document.getElementById("baseMapSelect"),activeLayerList=document.getElementById("activeLayerList"),layerOpacity=document.getElementById("layerOpacity"),layerColor=document.getElementById("layerColor");
+      let baseTileLayer=null;
+      function styleVisibleLayers(){[estadoLayer,geresLayer,municipioLayer].filter(Boolean).forEach(layer=>{if(layer.setStyle)layer.setStyle({fillOpacity:Number(layerOpacity.value)/100,fillColor:layerColor.value});});}
+      function refreshLayerPanel(){if(!activeLayerList)return;const rows=[];if(estadoLayer)rows.push("Limite estadual");if(geresLayer)rows.push("GERES selecionada");if(municipioLayer)rows.push("Município selecionado");if(selectedClimates.size)rows.push(...Array.from(selectedClimates).map(x=>"Clima: "+x));rows.push("Agravo: "+selectedDisease.name);activeLayerList.innerHTML=rows.map((x,i)=>'<div class="layer-row"><span>'+(i+1)+'</span><span>'+x+'</span><span>ativo</span></div>').join("");}
+
 
       // Composicao territorial oficial das GERES/SES-PE.
       // Fonte institucional: Carta de Servicos da SES-PE; grafia municipal
@@ -3866,10 +3875,9 @@
       async function loadPernambucoBase() {
         map = L.map("map", { zoomControl: true }).setView([-8.4, -37.9], 7);
 
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          maxZoom: 19,
-          attribution: "&copy; OpenStreetMap contributors"
-        }).addTo(map);
+        const baseMaps={osm:["https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png","&copy; OpenStreetMap contributors"],light:["https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png","&copy; OpenStreetMap &copy; CARTO"],topo:["https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png","Map data &copy; OpenStreetMap, SRTM | Map style &copy; OpenTopoMap"]};
+        const setBaseMap=(key)=>{if(baseTileLayer)map.removeLayer(baseTileLayer);const spec=baseMaps[key]||baseMaps.osm;baseTileLayer=L.tileLayer(spec[0],{maxZoom:19,attribution:spec[1]}).addTo(map);};
+        setBaseMap(baseMapSelect?.value||"osm");baseMapSelect?.addEventListener("change",()=>setBaseMap(baseMapSelect.value));
 
         let estadoGeo = null;
         let catalog = [];
@@ -3952,6 +3960,11 @@
 
         return mapReadyPromise;
       }
+
+      document.getElementById("fitPeBtn")?.addEventListener("click",()=>{if(estadoLayer)map.fitBounds(estadoLayer.getBounds(),{padding:[18,18]});});
+      document.getElementById("printMapBtn")?.addEventListener("click",()=>window.print());
+      document.getElementById("shareMapBtn")?.addEventListener("click",async()=>{const state={disease:resolveDiseaseApiKey(selectedDisease.name),years:Array.from(selectedYears),climates:Array.from(selectedClimates),geres:activeGeres,municipio:municipioSelect.value,method:selectedDemoMode};const url=location.origin+location.pathname+"#view="+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(state)))));try{await navigator.clipboard.writeText(url);updateRobotMessage("Link da seleção copiado.");}catch(_){prompt("Copie o link:",url);}});
+      layerOpacity?.addEventListener("input",styleVisibleLayers);layerColor?.addEventListener("input",styleVisibleLayers);
 
       document.querySelectorAll("#diseaseButtons .chip").forEach((button) => {
         button.addEventListener("click", async () => {
