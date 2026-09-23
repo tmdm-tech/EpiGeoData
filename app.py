@@ -1246,6 +1246,16 @@ def generate_prepared_heatmap_overlay() -> tuple[dict, int]:
         }, 404
 
     prefix = f"overlay_preparado_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    runtime_maps = Path(__file__).parent / "static" / "maps"
+    runtime_maps.mkdir(parents=True, exist_ok=True)
+    # Render has ephemeral constrained storage: retain only the newest generated
+    # products instead of accumulating every request forever.
+    generated = sorted(runtime_maps.glob("overlay_preparado_*.png"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for stale in generated[9:]:
+        try:
+            stale.unlink()
+        except OSError:
+            pass
 
     try:
         from scripts.generate_pernambuco_heatmap import generate_pernambuco_heatmaps
