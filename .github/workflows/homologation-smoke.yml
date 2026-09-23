@@ -147,6 +147,22 @@ jobs:
                       unavailable = json.loads(error.read())
                       assert unavailable.get('status') == 'indisponivel'
 
+          # Map generation must be executable in the deployed environment and
+          # must not depend on remote basemap/geometry downloads.
+          professional = json.loads(check(
+              '/api/maps/professional-overlay', 'POST',
+              {'disease_key': 'tuberculose'}, 200
+          ))
+          assert professional.get('ok') is True
+          assert professional.get('image_url'), 'professional overlay missing image_url'
+
+          prepared = json.loads(check(
+              '/api/maps/prepared-heatmap-overlay', 'POST',
+              {'input_file': 'municipios_pe.csv'}, 200
+          ))
+          assert prepared.get('ok') is True
+          assert all(prepared.get('maps', {}).get(k) for k in ('base', 'marked', 'combined'))
+
           invalid = json.loads(check('/api/catalog/assess', 'POST', {}, 400))
           assert 'error' in invalid, 'Invalid catalog request must return an error'
           for path in ('/api/maps/epidemiological-gwr', '/api/maps/epidemiological-gwr-upload'):
