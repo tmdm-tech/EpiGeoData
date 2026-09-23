@@ -1,7 +1,7 @@
 name: Homologation HTTP smoke tests
 on:
   push:
-    branches: [main]
+    branches: [feat/catalogo-dados-integrado]
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Check live homologation HTTP endpoints
         env:
-          BASE_URL: https://epigeodata.onrender.com
+          BASE_URL: https://epigeodata-homologacao.onrender.com
         run: |
           python - <<'PY'
           import json
