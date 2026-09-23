@@ -17,7 +17,6 @@ import pandas as pd
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import FancyArrowPatch, Patch
 from matplotlib.lines import Line2D
-from matplotlib_scalebar.scalebar import ScaleBar
 from shapely.geometry import box
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -194,31 +193,27 @@ def classifier_labels(classifier: mc.classifiers.MapClassifier, values: pd.Serie
 
 
 def add_cartographic_elements(ax: plt.Axes) -> None:
+    """Norte + barra de escala leve, sem matplotlib-scalebar."""
     ax.set_axis_off()
-    ax.add_artist(
-        ScaleBar(
-            dx=1,
-            units="m",
-            location="lower center",
-            box_alpha=0.92,
-            scale_loc="top",
-            color="#2f2f2f",
-            length_fraction=0.18,
-        )
-    )
-
+    xmin, xmax = ax.get_xlim()
+    ymin, ymax = ax.get_ylim()
+    width = xmax - xmin
+    height = ymax - ymin
+    scale_m = 100_000.0
+    if width < 300_000:
+        scale_m = 50_000.0
+    x0 = xmin + width * 0.72
+    y0 = ymin + height * 0.055
+    ax.plot([x0, x0 + scale_m], [y0, y0], color="#222222", linewidth=2.0, zorder=20)
+    ax.plot([x0, x0], [y0 - height * 0.008, y0 + height * 0.008], color="#222222", linewidth=1.2, zorder=20)
+    ax.plot([x0 + scale_m, x0 + scale_m], [y0 - height * 0.008, y0 + height * 0.008], color="#222222", linewidth=1.2, zorder=20)
+    ax.text(x0 + scale_m / 2, y0 + height * 0.018, f"{int(scale_m/1000)} km", ha="center", va="bottom", fontsize=9)
     north_arrow = FancyArrowPatch(
-        (0.93, 0.80),
-        (0.93, 0.90),
-        transform=ax.transAxes,
-        arrowstyle="-|>",
-        mutation_scale=16,
-        linewidth=1.2,
-        color="#2f2f2f",
+        (0.93, 0.80), (0.93, 0.90), transform=ax.transAxes,
+        arrowstyle="-|>", mutation_scale=18, linewidth=1.2, color="#222222",
     )
     ax.add_patch(north_arrow)
     ax.text(0.93, 0.92, "N", transform=ax.transAxes, ha="center", va="bottom", fontsize=11, fontweight="bold")
-
 
 def set_standard_map_frame(ax: plt.Axes, gdf: gpd.GeoDataFrame) -> None:
     minx, miny, maxx, maxy = gdf.total_bounds
@@ -295,10 +290,10 @@ def generate_professional_choropleth(
         stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         output_file = OUTPUT_DIR / f"mapa_profissional_{resolved_key}_{stamp}.png"
 
-    # Layout cartografico de publicacao: Pernambuco centralizado, limites municipais,\n    # titulo/subtitulo, legenda externa, norte e escala. Sem basemap remoto.
+    # Layout cartografico de publicacao: Pernambuco centralizado, limites municipais, titulo, legenda externa, norte e escala.
     gdf = municipalities_pe.to_crs(TARGET_CRS)
 
-    fig, ax = plt.subplots(figsize=(16, 8), facecolor=BACKGROUND_COLOR)
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor=BACKGROUND_COLOR)
     ax.set_facecolor(BACKGROUND_COLOR)
     set_standard_map_frame(ax, gdf)
 
@@ -348,8 +343,7 @@ def generate_professional_choropleth(
     fig.subplots_adjust(left=0.025, right=0.985, top=0.88, bottom=0.20)
     source_label = "DATASUS / cartografia municipal IBGE" if has_local_data else "Cartografia municipal IBGE"
     fig.text(0.025, 0.025, f"Fonte: {source_label}. Elaboracao: EpiGeoData.", fontsize=8.5, color="#333333")
-    fig.savefig(output_file, dpi=dpi, facecolor=BACKGROUND_COLOR, bbox_inches="tight")
-    plt.close(fig)
+    try:\n        fig.savefig(output_file, dpi=dpi, facecolor=BACKGROUND_COLOR, bbox_inches="tight")\n    finally:\n        plt.close(fig)
 
     return ChoroplethResult(
         output_file=output_file,
