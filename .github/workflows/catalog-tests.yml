@@ -50,5 +50,19 @@ jobs:
               except Exception as e:
                   print("TABNET",url,"ERROR",repr(e))
           PY
+      - name: Generate non-GWR disease choropleths
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from scripts.generate_choropleth_brazil import generate_professional_choropleth
+
+          for disease in ("esquistossomose", "dengue", "chikungunya", "scz", "tuberculose"):
+              result = generate_professional_choropleth(disease, dpi=72)
+              assert result.output_file.is_file(), f"{disease}: map file not generated"
+              assert result.output_file.stat().st_size > 1000, f"{disease}: generated map is empty"
+              assert result.has_local_data, f"{disease}: expected local epidemiological data"
+              result.output_file.unlink(missing_ok=True)
+              print("MAP PASS", disease, result.variable_label)
+          PY
       - name: Compile guarded entrypoints and harmonization
         run: python -m py_compile stage3_validation.py stage3_harmonization.py stage3_pipeline_gate.py scripts/run_validated_gwr.py wsgi_catalog.py
