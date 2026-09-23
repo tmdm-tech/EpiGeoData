@@ -287,7 +287,7 @@ def generate_professional_choropleth(
     gdf["geometry"] = gdf.geometry.simplify(25.0, preserve_topology=True)
     mainland = gdf[~gdf["join_name"].str.contains("FERNANDO DE NORONHA", na=False)].copy()
 
-    fig, ax = plt.subplots(figsize=(16, 7.5), facecolor=BACKGROUND_COLOR)
+    fig, ax = plt.subplots(figsize=(12.8, 6.0), facecolor=BACKGROUND_COLOR)
     ax.set_facecolor(BACKGROUND_COLOR)
     legend_handles: list[Patch] = []
     mode = normalize_token(analysis_mode)
@@ -355,7 +355,7 @@ def generate_professional_choropleth(
     source_label="DATASUS / cartografia municipal IBGE" if has_local_data else "Cartografia municipal IBGE"
     fig.text(.02,.025,f"Fonte: {source_label}. Elaboração: EpiGeoData.",fontsize=9,color="#333333")
     try:
-        fig.savefig(output_file,dpi=dpi,facecolor=BACKGROUND_COLOR,bbox_inches="tight")
+        fig.savefig(output_file,dpi=dpi,facecolor=BACKGROUND_COLOR)
     finally:
         plt.close(fig)
 
