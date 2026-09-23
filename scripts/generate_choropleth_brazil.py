@@ -292,6 +292,39 @@ def generate_professional_choropleth(
     gdf["geometry"] = gdf.geometry.simplify(25.0, preserve_topology=True)
     mainland = gdf[~gdf["join_name"].str.contains("FERNANDO DE NORONHA", na=False)].copy()
 
+    # Territorial filter must alter the analytical geography, not only the title.
+    # GERES composition follows the same official SES-PE grouping exposed by the frontend.
+    GERES_MUNICIPALITIES = {
+        "I GERES": ["ABREU E LIMA","ARACO IABA","CABO DE SANTO AGOSTINHO","CAMARAGIBE","CHA DE ALEGRIA","CHA GRANDE","GLORIA DO GOITA","IGARASSU","ILHA DE ITAMARACA","IPOJUCA","ITAPISSUMA","JABOATAO DOS GUARARAPES","MORENO","OLINDA","PAULISTA","POMBOS","RECIFE","SAO LOURENCO DA MATA","VITORIA DE SANTO ANTAO"],
+        "II GERES": ["BOM JARDIM","BUENOS AIRES","CARPINA","CASINHAS","CUMARU","FEIRA NOVA","JOAO ALFREDO","LAGOA DE ITAENGA","LAGOA DO CARRO","LIMOEIRO","MACHADOS","NAZARE DA MATA","OROBO","PASSIRA","PAUDALHO","SALGADINHO","SURUBIM","TRACUNHAEM","VERTENTE DO LERIO","VICENCIA"],
+        "III GERES": ["AGUA PRETA","AMARAJI","BARREIROS","BELEM DE MARIA","CATENDE","CORTES","ESCADA","GAMELEIRA","JAQUEIRA","JOAQUIM NABUCO","LAGOA DOS GATOS","MARAIAL","PALMARES","PRIMAVERA","QUIPAPA","RIBEIRAO","RIO FORMOSO","SAO BENEDITO DO SUL","SAO JOSE DA COROA GRANDE","SIRINHAEM","TAMANDARE","XEXEU"],
+        "IV GERES": ["AGRESTINA","ALAGOINHA","ALTINHO","BARRA DE GUABIRABA","BELO JARDIM","BEZERROS","BONITO","BREJO DA MADRE DE DEUS","CACHOEIRINHA","CAMOCIM DE SAO FELIX","CARUARU","CUPIRA","FREI MIGUELINHO","GRAVATA","IBIRAJUBA","JATAUBA","JUREMA","PANELAS","PESQUEIRA","POCAO","RIACHO DAS ALMAS","SAIRE","SANHARO","SANTA CRUZ DO CAPIBARIBE","SANTA MARIA DO CAMBUCA","SAO BENTO DO UNA","SAO CAETANO","SAO JOAQUIM DO MONTE","TACAIMBO","TAQUARITINGA DO NORTE","TORITAMA","VERTENTES"],
+        "V GERES": ["AGUAS BELAS","ANGELIM","BOM CONSELHO","BREJAO","CAETES","CALCADO","CANHOTINHO","CAPOEIRAS","CORRENTES","GARANHUNS","IATI","ITAIBA","JUCATI","JUPI","LAGOA DO OURO","LAJEDO","PALMEIRINA","PARANATAMA","SALOA","SAO JOAO","TEREZINHA"],
+        "VI GERES": ["ARCOVERDE","BUIQUE","CUSTODIA","IBIMIRIM","INAJA","JATOBA","MANARI","PEDRA","PETROLANDIA","SERTANIA","TACARATU","TUPANATINGA","VENTUROSA"],
+        "VII GERES": ["BELEM DO SAO FRANCISCO","CEDRO","MIRANDIBA","SALGUEIRO","SERRITA","TERRA NOVA","VERDEJANTE"],
+        "VIII GERES": ["AFRANIO","CABROBO","DORMENTES","LAGOA GRANDE","OROCO","PETROLINA","SANTA MARIA DA BOA VISTA"],
+        "IX GERES": ["ARARIPINA","BODOCO","EXU","GRANITO","IPUBI","MOREILANDIA","OURICURI","PARNAMIRIM","SANTA CRUZ","SANTA FILOMENA","TRINDADE"],
+        "X GERES": ["AFOGADOS DA INGAZEIRA","BREJINHO","CARNAIBA","IGUARACY","INGAZEIRA","ITAPETIM","QUIXABA","SANTA TEREZINHA","SAO JOSE DO EGITO","SOLIDAO","TABIRA","TUPARETAMA"],
+        "XI GERES": ["BETANIA","CALUMBI","CARNAUBEIRA DA PENHA","FLORES","FLORESTA","ITACURUBA","SANTA CRUZ DA BAIXA VERDE","SAO JOSE DO BELMONTE","SERRA TALHADA","TRIUNFO"],
+        "XII GERES": ["ALIANCA","CAMUTANGA","CONDADO","FERREIROS","GOIANA","ITAMBE","ITAQUITINGA","MACAPARANA","SAO VICENTE FERRER","TIMBAUBA"],
+    }
+    geres_key = str(geres or "ALL").strip().upper()
+    if geres_key not in ("", "ALL", "TODAS AS GERES"):
+        allowed = set(GERES_MUNICIPALITIES.get(geres_key, []))
+        if not allowed:
+            raise ValueError(f"GERES desconhecida: {geres}")
+        mainland = mainland[mainland["join_name"].isin(allowed)].copy()
+        if mainland.empty:
+            raise ValueError(f"GERES sem municípios compatíveis na malha IBGE: {geres}")
+        resolved_title = f"{display_name} – {geres_key}, Pernambuco"
+    if municipio_id:
+        code = str(municipio_id).replace(".0","").strip()
+        municipal = mainland[mainland["codigo_ibge"].astype(str).str.replace(".0","",regex=False) == code].copy()
+        if municipal.empty:
+            raise ValueError(f"Município IBGE não pertence ao recorte selecionado: {code}")
+        mainland = municipal
+        resolved_title = f"{display_name} – {mainland.iloc[0].get('name_muni', code)}, Pernambuco"
+
     fig, ax = plt.subplots(figsize=(12.8, 6.0), facecolor=BACKGROUND_COLOR)
     ax.set_facecolor(BACKGROUND_COLOR)
     legend_handles: list[Patch] = []
