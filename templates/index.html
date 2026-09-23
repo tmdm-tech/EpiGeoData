@@ -2422,7 +2422,7 @@
 
           lastProfessionalMapUrl = payload.image_url;
           professionalMapPreview.src = payload.image_url;
-          professionalMapPreview.classList.remove("visible");
+          professionalMapPreview.classList.add("visible");
           professionalMapStatus.innerHTML = payload.has_local_data
             ? "<strong>Cartografia:</strong> mapa epidemiológico científico gerado no backend"
             : "<strong>Cartografia:</strong> mapa científico gerado sem série municipal local; layout mantido para consulta DATASUS";
@@ -2450,12 +2450,12 @@
 
           lastProfessionalMapUrl = combinedMap;
           professionalMapPreview.src = combinedMap;
-          professionalMapPreview.classList.remove("visible");
+          professionalMapPreview.classList.add("visible");
           professionalMapStatus.innerHTML =
             "<strong>Cartografia:</strong> fallback de sobreposição preparado usado após falha no mapa epidemiológico";
         } catch (_) {
           lastProfessionalMapUrl = "";
-          professionalMapPreview.classList.remove("visible");
+          professionalMapPreview.classList.add("visible");
           professionalMapStatus.innerHTML = "<strong>Cartografia:</strong> falha ao gerar mapa no backend";
         }
       }
@@ -3173,7 +3173,7 @@
           "<span><strong>GERES:</strong> " + (activeGeres === "ALL" ? "Todas as GERES" : activeGeres) + "</span>" +
           "<span><strong>Municipio:</strong> " + municipio + "</span>" +
           "<span><strong>Metodo:</strong> " + describeMode(selectedDemoMode) + "</span>";
-        professionalMapPreview.classList.remove("visible");
+        professionalMapPreview.classList.add("visible");
         demoCanvas.style.display = "block";
         if (currentMapGeoJson || getCurrentBaseFeatureCollection()) {
           renderDemonstratorImage(reason, { mode: selectedDemoMode });
