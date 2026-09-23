@@ -24,7 +24,7 @@ def block_unvalidated_gwr():
             "error": "GWR is not authorized for unvalidated input data",
             "issues": [
                 "Municipality/year/sex grain and seven-digit IBGE codes must be preserved.",
-                "Official GERES membership and source provenance are not verified.",
+                "GERES membership is synchronized with SES-PE and municipal names with IBGE; model-level territorial linkage and source provenance must still be validated.",
                 "Epidemiological and climatic observations must align by municipality and period.",
                 "Bandwidth, collinearity and residual diagnostics must be validated.",
             ],
