@@ -16,6 +16,7 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, time
+          from urllib.parse import urljoin
           from urllib.request import Request, urlopen
           from urllib.error import HTTPError
           base=os.environ["BASE_URL"].rstrip("/")
@@ -33,8 +34,15 @@ jobs:
               return json.loads(body)
           p=call("/api/maps/professional-overlay",{"disease_key":"tuberculose","title":"Teste cartografico 300 dpi"})
           assert p.get("ok") is True and p.get("image_url")
+          with urlopen(urljoin(base+"/",p["image_url"].lstrip("/")),timeout=60) as image:
+              assert image.status==200 and image.headers.get_content_type()=="image/png"
+              assert len(image.read())>10000
           h=call("/api/maps/prepared-heatmap-overlay",{"input_file":"municipios_pe.csv"})
           assert h.get("ok") is True and all(h.get("maps",{}).get(k) for k in ("base","marked","combined"))
+          for image_url in h["maps"].values():
+              with urlopen(urljoin(base+"/",image_url.lstrip("/")),timeout=60) as image:
+                  assert image.status==200 and image.headers.get_content_type()=="image/png"
+                  assert len(image.read())>10000
           for path in ("/api/maps/epidemiological-gwr","/api/maps/epidemiological-gwr-upload"):
               g=call(path,{},422,45)
               assert g.get("status")=="blocked"
