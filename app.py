@@ -1099,7 +1099,7 @@ def export_spreadsheet():
 @app.get("/api/climate-layers/<climate_type>")
 def get_climate_layers(climate_type: str) -> tuple[dict, int]:
     """Retorna dados climáticos em GeoJSON"""
-    valid_types = ["precipitacao", "temperatura", "queimadas", "cobertura_vegetal"]
+    valid_types = ["precipitacao", "temperatura", "queimadas", "cobertura_vegetal", "relevo"]
     
     if climate_type not in valid_types:
         return {"error": f"Tipo climático inválido. Use: {', '.join(valid_types)}"}, 400
