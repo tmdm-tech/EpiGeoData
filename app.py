@@ -758,6 +758,46 @@ def _fetch_realtime_environment(lat: float, lon: float) -> dict:
     }
 
 
+SOCIO_IBGE_BINDINGS = {
+    "escolaridade": {"agregado": "6579", "periodo": "2010", "variavel": "9324", "label": "Escolaridade"},
+    "raca_cor": {"agregado": "6405", "periodo": "2010", "variavel": "93", "label": "Raca/cor"},
+    "sexo": {"agregado": "6442", "periodo": "2010", "variavel": "93", "label": "Sexo"},
+    "idade": {"agregado": "6448", "periodo": "2010", "variavel": "93", "label": "Idade"},
+    "renda": {"agregado": "5938", "periodo": "2022", "variavel": "37", "label": "Renda"},
+}
+
+def _first_numeric_ibge_value(node):
+    if isinstance(node, dict):
+        serie = node.get("serie")
+        if isinstance(serie, dict):
+            for value in serie.values():
+                try: return float(str(value).replace(",", "."))
+                except (TypeError, ValueError): pass
+        for value in node.values():
+            found = _first_numeric_ibge_value(value)
+            if found is not None: return found
+    elif isinstance(node, list):
+        for item in node:
+            found = _first_numeric_ibge_value(item)
+            if found is not None: return found
+    return None
+
+@app.get("/api/sociodemographic/<variable>/<ibge_code>")
+def get_sociodemographic_live(variable: str, ibge_code: str):
+    meta = SOCIO_IBGE_BINDINGS.get(variable)
+    code = _normalize_ibge_code(ibge_code)
+    if not meta or not code: return {"status": "indisponivel", "error": "Variavel ou codigo IBGE invalido"}, 400
+    url = "https://servicodados.ibge.gov.br/api/v3/agregados/{}/periodos/{}/variaveis/{}?localidades=N6[{}]".format(meta["agregado"], meta["periodo"], meta["variavel"], code)
+    payload = _http_get_json(url, timeout=15)
+    value = _first_numeric_ibge_value(payload)
+    if value is None: return {"status": "indisponivel", "source": "IBGE/SIDRA", "variable": variable, "ibge_code": code, "period": meta["periodo"]}, 503
+    return {"status": "disponivel", "source": "IBGE/SIDRA", "variable": variable, "label": meta["label"], "ibge_code": code, "period": meta["periodo"], "value": value, "queried_at": datetime.utcnow().isoformat(timespec="seconds") + "Z"}, 200
+
+@app.get("/api/environment/status")
+def environment_status():
+    layers, _ = list_climate_layers()
+    return {"status": "disponivel", "realtime": {"precipitacao": {"status": "disponivel", "source": "Open-Meteo"}, "temperatura": {"status": "disponivel", "source": "Open-Meteo"}, "relevo": {"status": "disponivel", "source": "OpenTopoData ASTER30m"}}, "scientific_layers": layers.get("camadas", []), "note": "Cobertura vegetal e hidrografia derivadas nao sao rotuladas como observacoes oficiais em tempo real."}, 200
+
 @app.post("/api/realtime/municipio")
 def get_realtime_municipio() -> tuple[dict, int]:
     payload = request.get_json(silent=True) or {}
