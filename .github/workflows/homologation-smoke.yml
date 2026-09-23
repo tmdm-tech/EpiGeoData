@@ -119,6 +119,30 @@ jobs:
                   assert isinstance(live_payload.get('fallback'), dict), f'{disease}: 503 must expose labelled fallback'
               print(f'GET {path}: adapter status={live_payload.get("status")} HTTP={status}', flush=True)
 
+          environment = json.loads(check('/api/environment/status', 'GET', None, 200))
+          assert environment.get('status') == 'disponivel'
+          assert environment.get('realtime', {}).get('precipitacao', {}).get('status') == 'disponivel'
+          assert environment.get('realtime', {}).get('temperatura', {}).get('status') == 'disponivel'
+
+          # Recife: verify that the server-side IBGE proxy is reachable. Some
+          # census aggregates may legitimately be unavailable; that must be
+          # explicit (503), never an endless UI "aguardando" state.
+          for variable in ('escolaridade', 'raca_cor', 'sexo', 'idade', 'renda'):
+              path = f'/api/sociodemographic/{variable}/2611606'
+              try:
+                  socio = json.loads(check(path, 'GET', None, 200))
+                  assert socio.get('status') == 'disponivel'
+                  assert socio.get('source') == 'IBGE/SIDRA'
+              except AssertionError:
+                  request = Request(base + path, method='GET')
+                  try:
+                      urlopen(request, timeout=30)
+                      raise
+                  except HTTPError as error:
+                      assert error.code == 503, f'{variable}: unexpected HTTP {error.code}'
+                      unavailable = json.loads(error.read())
+                      assert unavailable.get('status') == 'indisponivel'
+
           invalid = json.loads(check('/api/catalog/assess', 'POST', {}, 400))
           assert 'error' in invalid, 'Invalid catalog request must return an error'
           for path in ('/api/maps/epidemiological-gwr', '/api/maps/epidemiological-gwr-upload'):
