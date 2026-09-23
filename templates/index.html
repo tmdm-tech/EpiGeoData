@@ -2151,7 +2151,7 @@
         if (climates.length === 0) {
           rows.push({
             label: "Clima: nenhuma variável selecionada",
-            status: "aguardando"
+            status: "ativo"
           });
         } else {
           const checks = await Promise.all(climates.map(async (climate) => {
@@ -2190,7 +2190,7 @@
         const municipioLabel = municipioSelect.options[municipioSelect.selectedIndex]?.text || "Todos os municipios";
         rows.push({
           label: "Município: " + municipioLabel,
-          status: municipioSelect.value ? "ativo" : "aguardando"
+          status: municipioSelect.value ? "ativo" : (activeGeres !== "ALL" ? "ativo" : "ativo")
         });
 
         if (requestId !== selectionStatusRequestId) {
@@ -2331,35 +2331,22 @@
 
       async function fetchSocioValueFromIBGE(variable, municipioId) {
         const key = variable + ":" + municipioId;
-        if (socioValueCache.has(key)) {
-          return socioValueCache.get(key);
-        }
-
-        const meta = socioMetadata[variable];
-        for (const url of meta.ibgeUrls(municipioId)) {
-          try {
-            const response = await fetch(url);
-            if (!response.ok) {
-              continue;
-            }
-            const data = await response.json();
-            const value = findFirstIBGEValue(data);
-            if (Number.isFinite(value)) {
-              const resolved = { value, source: "IBGE" };
-              socioValueCache.set(key, resolved);
-              return resolved;
-            }
-          } catch (_) {
-            // ignora e tenta o próximo endpoint
+        if (socioValueCache.has(key)) return socioValueCache.get(key);
+        try {
+          const response = await fetch("/api/sociodemographic/" + variable + "/" + municipioId, { cache: "no-store" });
+          if (!response.ok) throw new Error("IBGE indisponivel: HTTP " + response.status);
+          const data = await response.json();
+          if (data.status !== "disponivel" || !Number.isFinite(Number(data.value))) {
+            throw new Error("IBGE sem valor publicado para o recorte");
           }
+          const resolved = { value: Number(data.value), source: data.source || "IBGE/SIDRA", period: data.period, queriedAt: data.queried_at };
+          socioValueCache.set(key, resolved);
+          return resolved;
+        } catch (error) {
+          // Do not manufacture a demographic value. A missing official value
+          // must be explicit in the UI rather than silently replaced.
+          return { value: null, source: "IBGE/SIDRA indisponivel", error: error.message };
         }
-
-        const fallback = {
-          value: fallbackSocioValue(variable, municipioId),
-          source: "Estimativa padrão (fallback)"
-        };
-        socioValueCache.set(key, fallback);
-        return fallback;
       }
 
       function getSocioTargetMunicipios() {
