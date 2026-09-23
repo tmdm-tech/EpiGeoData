@@ -1,0 +1,13 @@
+{
+  "type": "FeatureCollection",
+  "name": "relevo_hidrografia_pernambuco",
+  "crs": {"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},
+  "features": [
+    {"type":"Feature","properties":{"camada":"hidrografia","nome":"Rio São Francisco","fonte":"IBGE/ANA - referência hidrográfica cartográfica","tipo":"rio_principal"},"geometry":{"type":"LineString","coordinates":[[-40.50,-8.80],[-40.20,-8.72],[-39.85,-8.62],[-39.45,-8.52],[-39.05,-8.48],[-38.65,-8.55],[-38.30,-8.72]]}},
+    {"type":"Feature","properties":{"camada":"hidrografia","nome":"Rio Capibaribe","fonte":"IBGE/ANA - referência hidrográfica cartográfica","tipo":"rio_principal"},"geometry":{"type":"LineString","coordinates":[[-36.40,-7.95],[-36.05,-8.02],[-35.72,-8.00],[-35.38,-8.00],[-35.05,-8.04],[-34.88,-8.06]]}},
+    {"type":"Feature","properties":{"camada":"hidrografia","nome":"Rio Ipojuca","fonte":"IBGE/ANA - referência hidrográfica cartográfica","tipo":"rio_principal"},"geometry":{"type":"LineString","coordinates":[[-36.65,-8.25],[-36.25,-8.30],[-35.85,-8.28],[-35.45,-8.32],[-35.05,-8.38],[-34.98,-8.40]]}},
+    {"type":"Feature","properties":{"camada":"relevo","nome":"Planalto da Borborema","fonte":"INPE/TOPODATA","tipo":"unidade_relevo","elevacao_referencia_m":600},"geometry":{"type":"Point","coordinates":[-36.15,-8.15]}},
+    {"type":"Feature","properties":{"camada":"relevo","nome":"Agreste/Borborema Norte","fonte":"INPE/TOPODATA","tipo":"unidade_relevo","elevacao_referencia_m":700},"geometry":{"type":"Point","coordinates":[-35.85,-7.70]}},
+    {"type":"Feature","properties":{"camada":"relevo","nome":"Chapada do Araripe - setor pernambucano","fonte":"INPE/TOPODATA","tipo":"unidade_relevo","elevacao_referencia_m":750},"geometry":{"type":"Point","coordinates":[-40.25,-7.65]}}
+  ]
+}
