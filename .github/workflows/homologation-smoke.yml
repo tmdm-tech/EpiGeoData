@@ -49,6 +49,38 @@ jobs:
           check('/')
           datasets = json.loads(check('/api/catalog/datasets'))
           assert isinstance(datasets.get('datasets'), list), 'Catalog must return a datasets list'
+          catalog_by_id = {item['id']: item for item in datasets['datasets']}
+          required_local = {
+              'pce_positividade', 'dengue_casos_provaveis', 'chikungunya_casos',
+              'scz_eventos', 'tuberculose_confirmados',
+              'temperatura_pontos', 'malha_municipal'
+          }
+          missing = required_local - set(catalog_by_id)
+          assert not missing, f'Catalog missing registered datasets: {sorted(missing)}'
+          unreadable = {key: catalog_by_id[key].get('read_error') for key in required_local if catalog_by_id[key].get('read_error')}
+          assert not unreadable, f'Registered datasets must decode cleanly: {unreadable}'
+          unavailable = [key for key in required_local if not catalog_by_id[key].get('available')]
+          assert not unavailable, f'Registered datasets unavailable: {unavailable}'
+
+          disease_expectations = {
+              'esquistossomose': True,
+              'dengue': True,
+              'chikungunya': True,
+              'scz': True,
+              'tuberculose': True,
+              'covid_19': False,
+              'monkeypox': False,
+              'oropouche': False,
+          }
+          for disease, expects_local in disease_expectations.items():
+              payload = json.loads(check(f'/api/disease-data/{disease}'))
+              assert payload.get('disease') == disease, f'{disease}: wrong disease payload'
+              source = payload.get('source')
+              if expects_local:
+                  assert source, f'{disease}: expected a local CSV source'
+                  assert payload.get('summary', {}).get('total_municipios', 0) > 0, f'{disease}: local CSV produced no municipalities'
+              else:
+                  assert source is None, f'{disease}: unexpected local CSV source {source}'
           invalid = json.loads(check('/api/catalog/assess', 'POST', {}, 400))
           assert 'error' in invalid, 'Invalid catalog request must return an error'
           for path in ('/api/maps/epidemiological-gwr', '/api/maps/epidemiological-gwr-upload'):
