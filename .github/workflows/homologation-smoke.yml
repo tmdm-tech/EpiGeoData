@@ -36,6 +36,10 @@ jobs:
                   except HTTPError as error:
                       status = error.code
                       body = error.read(2_000_000)
+                      if status in (502, 503, 504) and attempt < 6:
+                          print(f'{method} {path}: transient HTTP {status} on attempt {attempt}/6; retrying', flush=True)
+                          time.sleep(20)
+                          continue
                       break
                   except (URLError, TimeoutError) as error:
                       print(f'{method} {path}: connection attempt {attempt}/6 failed: {error}', flush=True)
