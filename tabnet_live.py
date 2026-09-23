@@ -88,6 +88,10 @@ def query_tabnet(definition_url: str, timeout: int = 20) -> TabnetResult:
             params[name] = _pick(options, ("ano",))
         elif key == "incremento":
             params[name] = _pick(options, ("freq", "caso", "positiv"))
+        elif key == "arquivos":
+            # Query every currently published file so the platform receives the
+            # complete series exposed by TABNET, including the newest period.
+            params[name] = [value for value, _ in options if value]
         else:
             selected = _pick(options, ("todos", "todas"))
             if selected is not None:
