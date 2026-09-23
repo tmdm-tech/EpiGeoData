@@ -328,7 +328,10 @@ def generate_professional_choropleth(
     fig.subplots_adjust(left=0.025, right=0.985, top=0.88, bottom=0.20)
     source_label = "DATASUS / cartografia municipal IBGE" if has_local_data else "Cartografia municipal IBGE"
     fig.text(0.025, 0.025, f"Fonte: {source_label}. Elaboracao: EpiGeoData.", fontsize=8.5, color="#333333")
-    try:\n        fig.savefig(output_file, dpi=dpi, facecolor=BACKGROUND_COLOR, bbox_inches="tight")\n    finally:\n        plt.close(fig)
+    try:
+        fig.savefig(output_file, dpi=dpi, facecolor=BACKGROUND_COLOR, bbox_inches="tight")
+    finally:
+        plt.close(fig)
 
     return ChoroplethResult(
         output_file=output_file,
