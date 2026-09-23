@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
@@ -273,7 +274,12 @@ def generate_professional_choropleth(
         output_file = OUTPUT_DIR / f"mapa_profissional_{resolved_key}_{stamp}.png"
 
     # Layout cartografico de publicacao: Pernambuco centralizado, limites municipais, titulo, legenda externa, norte e escala.
-    gdf = municipalities_pe.to_crs(TARGET_CRS)
+    gdf = municipalities_pe.to_crs(TARGET_CRS).copy()
+    # Matplotlib/Python 3.14 can recurse deeply while copying complex polygon paths.
+    # A sub-pixel simplification at state scale preserves municipal cartography and
+    # keeps the renderer within bounded path complexity.
+    sys.setrecursionlimit(max(sys.getrecursionlimit(), 10000))
+    gdf["geometry"] = gdf.geometry.simplify(25.0, preserve_topology=True)
 
     fig, ax = plt.subplots(figsize=(12, 6), facecolor=BACKGROUND_COLOR)
     ax.set_facecolor(BACKGROUND_COLOR)
