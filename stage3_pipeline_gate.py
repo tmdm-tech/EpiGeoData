@@ -50,7 +50,11 @@ def require_authorized_gwr(
         code_col=next((x for x in ("code_muni","municipio_ibge","CD_MUN") if x in gdf.columns),None)
         if not code_col: raise ModelNotAuthorized("Official geometry lacks municipality code")
         gcodes=gdf[code_col].astype(str).str.replace(r"\.0$","",regex=True)
-        if set(codes)!=set(gcodes): raise ModelNotAuthorized("Panel/geometry municipality coverage is not 1:1")
+        panel_codes=set(codes); geometry_codes=set(gcodes)
+        if not panel_codes.issubset(geometry_codes):
+            raise ModelNotAuthorized("Panel contains municipality codes absent from official geometry")
+        if len(panel_codes) < max(30, len(independent_vars) + 10):
+            raise ModelNotAuthorized("Insufficient complete municipalities for a stable GWR cross-section")
         if gdf.crs is None: raise ModelNotAuthorized("Geometry CRS is unknown")
     except ModelNotAuthorized: raise
     except Exception as exc: raise ModelNotAuthorized(f"Panel validation failed: {exc}") from exc
