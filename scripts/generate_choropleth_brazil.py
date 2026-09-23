@@ -11,10 +11,10 @@ from datetime import datetime
 from pathlib import Path
 
 import geopandas as gpd
-import mapclassify as mc
 import matplotlib.pyplot as plt
 import pandas as pd
-from matplotlib.colors import ListedColormap
+from matplotlib.colors import BoundaryNorm
+from matplotlib.cm import ScalarMappable
 from matplotlib.patches import FancyArrowPatch, Patch
 from matplotlib.lines import Line2D
 from shapely.geometry import box
@@ -174,24 +174,6 @@ def load_municipality_totals(csv_path: Path) -> pd.DataFrame:
     return clean.groupby(["codigo_ibge", "join_name"], dropna=False, as_index=False)["total_casos"].sum()
 
 
-def build_classification(values: pd.Series, scheme: str, n_classes: int) -> mc.classifiers.MapClassifier:
-    clean = values.dropna().astype(float)
-    unique_count = int(clean.nunique())
-    actual_k = max(2, min(n_classes, unique_count))
-    if scheme == "quantiles":
-        return mc.Quantiles(clean, k=actual_k)
-    return mc.NaturalBreaks(clean, k=actual_k)
-
-
-def classifier_labels(classifier: mc.classifiers.MapClassifier, values: pd.Series) -> list[str]:
-    lower = float(values.min())
-    labels: list[str] = []
-    for upper in classifier.bins:
-        labels.append(f"{lower:,.0f} - {float(upper):,.0f}")
-        lower = float(upper)
-    return labels
-
-
 def add_cartographic_elements(ax: plt.Axes) -> None:
     """Norte + barra de escala leve, sem matplotlib-scalebar."""
     ax.set_axis_off()
@@ -299,24 +281,27 @@ def generate_professional_choropleth(
 
     legend_handles: list[Patch] = []
     if has_classified_values:
-        classifier = build_classification(values, DEFAULT_SCHEME, DEFAULT_CLASSES)
-        class_bins = [float(values.min())] + [float(v) for v in classifier.bins]
-        class_ids = pd.Series(pd.NA, index=gdf.index, dtype="object")
-        class_ids.loc[values.dropna().index] = classifier.yb.astype(int)
-        palette = PALETTE[: len(class_bins) - 1]
-        gdf["plot_color"] = class_ids.map(
-            lambda idx: palette[int(idx)] if pd.notna(idx) else NO_DATA_COLOR
-        )
+        clean_values = values.dropna().astype(float)
+        # Quantis calculados pelo pandas evitam a dependencia pesada mapclassify
+        # no caminho de download e sao estaveis mesmo com poucos valores unicos.
+        requested = min(DEFAULT_CLASSES, max(2, int(clean_values.nunique())))
+        _, edges = pd.qcut(clean_values, q=requested, retbins=True, duplicates="drop")
+        class_bins = [float(v) for v in edges]
+        palette = PALETTE[: max(1, len(class_bins) - 1)]
+        if len(class_bins) < 2:
+            class_bins = [float(clean_values.min()), float(clean_values.max()) + 1.0]
+            palette = PALETTE[:1]
+        norm = BoundaryNorm(class_bins, ncolors=len(palette), clip=True)
+        gdf["plot_color"] = [
+            palette[min(norm(float(v)), len(palette)-1)] if pd.notna(v) else NO_DATA_COLOR
+            for v in values
+        ]
         gdf.plot(ax=ax, color=gdf["plot_color"], edgecolor="#666666", linewidth=0.45)
         for idx, color in enumerate(palette):
-            legend_handles.append(
-                Patch(
-                    facecolor=color,
-                    edgecolor="#333333",
-                    linewidth=0.6,
-                    label=f"{class_bins[idx]:.1f} – {class_bins[idx + 1]:.1f}",
-                )
-            )
+            legend_handles.append(Patch(
+                facecolor=color, edgecolor="#333333", linewidth=0.6,
+                label=f"{class_bins[idx]:.1f} – {class_bins[idx + 1]:.1f}",
+            ))
     else:
         gdf.plot(ax=ax, color=NO_DATA_COLOR, edgecolor="#777777", linewidth=0.45)
         legend_handles.append(
