@@ -22,7 +22,6 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from matplotlib.patches import FancyArrowPatch
-from matplotlib_scalebar.scalebar import ScaleBar
 from shapely.geometry import Point
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -172,30 +171,19 @@ def aggregate_intensity_by_municipality(
 
 def add_cartographic_elements(ax: plt.Axes) -> None:
     ax.set_axis_off()
-
-    scalebar = ScaleBar(
-        dx=1,
-        units="m",
-        location="lower right",
-        box_alpha=0.85,
-        scale_loc="top",
-        color="#2d2d2d",
-        length_fraction=0.20,
-    )
-    ax.add_artist(scalebar)
-
-    north_arrow = FancyArrowPatch(
-        (0.94, 0.80),
-        (0.94, 0.90),
-        transform=ax.transAxes,
-        arrowstyle="-|>",
-        mutation_scale=16,
-        linewidth=1.2,
-        color="#2d2d2d",
-    )
+    xmin, xmax = ax.get_xlim()
+    ymin, ymax = ax.get_ylim()
+    width, height = xmax - xmin, ymax - ymin
+    scale_m = 100_000.0 if width >= 300_000 else 50_000.0
+    x0, y0 = xmin + width * 0.70, ymin + height * 0.055
+    ax.plot([x0, x0 + scale_m], [y0, y0], color="#2d2d2d", linewidth=2, zorder=20)
+    ax.plot([x0, x0], [y0-height*.008, y0+height*.008], color="#2d2d2d", linewidth=1, zorder=20)
+    ax.plot([x0+scale_m, x0+scale_m], [y0-height*.008, y0+height*.008], color="#2d2d2d", linewidth=1, zorder=20)
+    ax.text(x0 + scale_m/2, y0 + height*.018, f"{int(scale_m/1000)} km", ha="center", fontsize=8)
+    north_arrow = FancyArrowPatch((0.94, 0.80), (0.94, 0.90), transform=ax.transAxes,
+                                  arrowstyle="-|>", mutation_scale=16, linewidth=1.2, color="#2d2d2d")
     ax.add_patch(north_arrow)
-    ax.text(0.94, 0.92, "N", transform=ax.transAxes, ha="center", va="bottom", fontsize=11, fontweight="bold")
-
+    ax.text(0.94, 0.92, "N", transform=ax.transAxes, ha="center", va="bottom", fontsize=10, fontweight="bold")
 
 def plot_base_map(
     municipalities: gpd.GeoDataFrame,
@@ -213,8 +201,7 @@ def plot_base_map(
     ax.set_title(title, fontsize=15, fontweight="bold", pad=10)
     add_cartographic_elements(ax)
     fig.text(0.01, 0.01, "Fonte: IBGE (malha municipal 2020, SIRGAS 2000)", fontsize=9, color="#555555")
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
+    try:\n        fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")\n    finally:\n        plt.close(fig)
 
 
 def plot_marked_heatmap(
@@ -264,8 +251,7 @@ def plot_marked_heatmap(
         fontsize=9,
         color="#555555",
     )
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
+    try:\n        fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")\n    finally:\n        plt.close(fig)
 
 
 def plot_combined_panel(
