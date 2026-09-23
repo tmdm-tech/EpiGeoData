@@ -19,6 +19,8 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 from matplotlib.patches import FancyArrowPatch
 from matplotlib_scalebar.scalebar import ScaleBar
 from shapely.geometry import Point
@@ -275,52 +277,37 @@ def plot_combined_panel(
     output_path: Path,
     dpi: int,
 ) -> None:
+    """Renderiza o painel final diretamente, sem manter dois PNGs 300 dpi em memoria."""
     cmap = LinearSegmentedColormap.from_list(
-        "climate_intensity",
-        ["#2c7bb6", "#5ab4ac", "#fee08b", "#fdae61", "#d7191c"],
+        "climate_intensity", ["#2c7bb6", "#5ab4ac", "#fee08b", "#fdae61", "#d7191c"]
     )
+    # 16x8 a 300 dpi = 4800x2400 (~46 MB RGBA), muito menor que o antigo
+    # painel 10x18 (~65 MB) e sem colorbar pesado criado pelo GeoPandas.
+    fig, axes = plt.subplots(2, 1, figsize=(8, 10), facecolor="white")
+    try:
+        base_municipalities.plot(ax=axes[0], color="#f8f8f8", edgecolor="#8e8e8e", linewidth=0.30)
+        axes[0].set_title(title_base, fontsize=12, fontweight="bold", pad=6)
+        add_cartographic_elements(axes[0])
 
-    fig, axes = plt.subplots(2, 1, figsize=(10, 18), facecolor="white")
-
-    base_municipalities.plot(
-        ax=axes[0],
-        color="#f8f8f8",
-        edgecolor="#8e8e8e",
-        linewidth=0.35,
-    )
-    axes[0].set_title(title_base, fontsize=14, fontweight="bold", pad=8)
-    add_cartographic_elements(axes[0])
-
-    heat_municipalities.plot(
-        ax=axes[1],
-        column="intensidade_total",
-        cmap=cmap,
-        linewidth=0.30,
-        edgecolor="#6e6e6e",
-    )
-    points.plot(
-        ax=axes[1],
-        color="#111111",
-        markersize=28,
-        marker="o",
-        alpha=0.85,
-        edgecolor="white",
-        linewidth=0.45,
-        zorder=5,
-    )
-    axes[1].set_title(title_marked, fontsize=14, fontweight="bold", pad=8)
-    add_cartographic_elements(axes[1])
-
-    fig.text(
-        0.01,
-        0.008,
-        "Fonte: IBGE (malha municipal 2020, SIRGAS 2000) + entrada georreferenciada do usuario",
-        fontsize=9,
-        color="#555555",
-    )
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
-
+        values = heat_municipalities["intensidade_total"].astype(float)
+        vmin, vmax = float(values.min()), float(values.max())
+        if vmax <= vmin:
+            vmax = vmin + 1.0
+        heat_municipalities.plot(
+            ax=axes[1], column="intensidade_total", cmap=cmap,
+            vmin=vmin, vmax=vmax, linewidth=0.25, edgecolor="#6e6e6e",
+        )
+        points.plot(ax=axes[1], color="#111111", markersize=16, marker="o",
+                    alpha=0.80, edgecolor="white", linewidth=0.35, zorder=5)
+        axes[1].set_title(title_marked, fontsize=12, fontweight="bold", pad=6)
+        add_cartographic_elements(axes[1])
+        sm = ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=cmap)
+        sm.set_array([])
+        fig.colorbar(sm, ax=axes[1], fraction=0.025, pad=0.02, label="Intensidade agregada por municipio")
+        fig.text(0.01, 0.008, "Fonte: IBGE + entrada georreferenciada do usuario", fontsize=8, color="#555555")
+        fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")
+    finally:
+        plt.close(fig)
 
 def generate_pernambuco_heatmaps(
     input_path: Path,
@@ -346,9 +333,14 @@ def generate_pernambuco_heatmaps(
     title_base = "Pernambuco - Limites Municipais (Base Cartografica)"
     title_marked = "Pernambuco - Marcacoes Georreferenciadas e Intensidade"
 
-    plot_base_map(munis_plot, title_base, base_map, dpi)
-    plot_marked_heatmap(heat_plot, points_plot, title_marked, marked_map, dpi)
+    # Renderizacao sequencial e fechamento explicito de cada figura. O painel
+    # combinado e o produto principal; mapas individuais usam 180 dpi para
+    # preview, evitando estourar a memoria do worker gratuito do Render.
+    preview_dpi = min(dpi, 180)
+    plot_base_map(munis_plot, title_base, base_map, preview_dpi)
+    plot_marked_heatmap(heat_plot, points_plot, title_marked, marked_map, preview_dpi)
     plot_combined_panel(munis_plot, heat_plot, points_plot, title_base, title_marked, combined_map, dpi)
+    plt.close("all")
 
     return HeatmapOutputs(base_map=base_map, marked_map=marked_map, combined_map=combined_map)
 
