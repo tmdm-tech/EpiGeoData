@@ -69,10 +69,13 @@ def _validate_spatial_inputs(table, municipalities, *, year: int, dependent: str
         raise DataValidationError("Duplicate municipality in selected year/sex; no records discarded")
     if geo["_ibge_code"].duplicated().any():
         raise DataValidationError("Duplicate municipality geometries")
-    if set(tab["_ibge_code"]) != set(geo["_ibge_code"]):
-        missing_geometry = sorted(set(tab["_ibge_code"]) - set(geo["_ibge_code"]))
-        missing_data = sorted(set(geo["_ibge_code"]) - set(tab["_ibge_code"]))
-        raise DataValidationError(f"Municipality mismatch: without geometry={missing_geometry[:5]}, without observations={missing_data[:5]}")
+    tab_codes=set(tab["_ibge_code"]); geo_codes=set(geo["_ibge_code"])
+    missing_geometry=sorted(tab_codes-geo_codes)
+    if missing_geometry:
+        raise DataValidationError(f"Municipality observations without official geometry: {missing_geometry[:5]}")
+    # Complete-case analysis: retain only official geometries represented in the
+    # validated panel. Missing climate observations are never imputed.
+    geo=geo[geo["_ibge_code"].isin(tab_codes)].copy()
     for column in [dependent, *predictors]:
         values = pd.to_numeric(tab[column], errors="raise")
         if not np.isfinite(values.to_numpy(dtype=float)).all():
