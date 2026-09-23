@@ -249,6 +249,11 @@ def generate_professional_choropleth(
     dpi: int = DEFAULT_DPI,
     analysis_mode: str = "choropleth",
     selected_years: list[int] | None = None,
+    selected_climates: list[str] | None = None,
+    socio_variable: str = "",
+    socio_scope: str = "",
+    geres: str = "ALL",
+    municipio_id: str = "",
 ) -> ChoroplethResult:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     resolved_key, csv_path = resolve_disease_csv(disease_key)
@@ -296,7 +301,47 @@ def generate_professional_choropleth(
         ys=sorted(set(int(y) for y in selected_years))
         period = str(ys[0]) if len(ys)==1 else f"{ys[0]}–{ys[-1]}"
 
-    if mode in {"moran","lisa","moran_local"} and has_classified_values:
+    climate_labels = {
+        "precipitacao": "Precipitação", "temperatura": "Temperatura",
+        "cobertura_vegetal": "Cobertura vegetal", "relevo": "Relevo + Hidrografia",
+        "queimadas": "Queimadas",
+    }
+    climate_text = " + ".join(climate_labels.get(normalize_token(v), str(v)) for v in (selected_climates or []))
+    method_labels = {
+        "gwr": "GWR", "kernel": "Kernel", "heat": "Mapa de calor",
+        "density": "Densidade", "moran": "Moran Local (LISA)",
+        "overlay": "Sobreposição multivariada", "choropleth": "Coroplético",
+    }
+    method_label = method_labels.get(mode, mode.replace("_", " ").title())
+
+    if mode in {"gwr"}:
+        # GWR permanece fail-closed: não rotular uma superfície suavizada como
+        # regressão geograficamente ponderada sem painel clima-saúde harmonizado.
+        raise RuntimeError(
+            "GWR científico indisponível para esta seleção: o painel município-período "
+            "de clima e desfecho ainda não satisfaz a validação necessária ao ajuste."
+        )
+
+    if mode in {"kernel", "heat", "density"} and has_classified_values:
+        import numpy as np
+        work = mainland.copy()
+        y = pd.to_numeric(work["total_casos"], errors="coerce").fillna(0).to_numpy(dtype=float)
+        xy = np.column_stack([work.geometry.centroid.x.to_numpy(), work.geometry.centroid.y.to_numpy()])
+        grid_n = 180
+        minx, miny, maxx, maxy = work.total_bounds
+        gx, gy = np.meshgrid(np.linspace(minx, maxx, grid_n), np.linspace(miny, maxy, grid_n))
+        span = max(maxx-minx, maxy-miny)
+        bandwidth = span * (0.075 if mode == "kernel" else 0.11 if mode == "heat" else 0.055)
+        surface = np.zeros_like(gx, dtype=float)
+        weights = y if mode != "density" else np.where(y > 0, 1.0, 0.0)
+        for (px, py), wt in zip(xy, weights):
+            surface += float(wt) * np.exp(-((gx-px)**2 + (gy-py)**2) / (2 * bandwidth**2))
+        ax.imshow(surface, extent=[minx,maxx,miny,maxy], origin="lower", cmap="magma", alpha=.72, zorder=1)
+        work.boundary.plot(ax=ax, color="#666666", linewidth=.35, zorder=2)
+        variable_label = f"{method_label} ponderado por casos"
+        resolved_title = f"{method_label} de {display_name} – Pernambuco"
+        legend_handles = [Patch(facecolor="#d95f0e", edgecolor="#333333", label=variable_label)]
+    elif mode in {"moran","lisa","moran_local"} and has_classified_values:
         try:
             from libpysal.weights import Queen
             from esda.moran import Moran_Local
@@ -345,7 +390,12 @@ def generate_professional_choropleth(
     mainland.dissolve().boundary.plot(ax=ax,color="#111111",linewidth=1.8)
     set_standard_map_frame(ax, mainland)
     add_cartographic_elements(ax)
-    title_text=resolved_title + (f"\nPeríodo: {period}" if period else "")
+    context_parts = [f"Método: {method_label}"]
+    if climate_text: context_parts.append(f"Clima: {climate_text}")
+    if geres and geres != "ALL": context_parts.append(f"GERES: {geres}")
+    if municipio_id: context_parts.append(f"Município IBGE: {municipio_id}")
+    if socio_variable: context_parts.append(f"IBGE: {socio_variable}" + (f" ({socio_scope})" if socio_scope else ""))
+    title_text=resolved_title + (f"\nPeríodo: {period}" if period else "") + "\n" + " | ".join(context_parts)
     ax.set_title(title_text,fontsize=18,fontweight="bold",pad=16,color="#111111")
     ax.legend(handles=legend_handles,title=variable_label,loc="lower center",
               bbox_to_anchor=(0.5,-0.18),ncol=min(5,max(1,len(legend_handles))),
