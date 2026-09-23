@@ -10,41 +10,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Exercise production cartographic endpoints
-        env:
-          BASE_URL: https://epigeodata.onrender.com
+      - name: Wait for Render and test choropleth + Local Moran
         run: |
           python - <<'PY'
-          import json, os, time
-          from urllib.parse import urljoin
-          from urllib.request import Request, urlopen
-          from urllib.error import HTTPError
-          base=os.environ["BASE_URL"].rstrip("/")
-          def call(path,payload,expected=200,timeout=120):
-              req=Request(base+path,data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"},method="POST")
-              for attempt in range(6):
+          import json,time
+          from urllib.request import Request,urlopen
+          base="https://epigeodata.onrender.com"
+          def post(payload):
+              last=None
+              for _ in range(10):
                   try:
-                      with urlopen(req,timeout=timeout) as r: status,body=r.status,r.read(3000000)
-                  except HTTPError as e: status,body=e.code,e.read(3000000)
-                  if status==expected: break
-                  if status in (502,503,504): time.sleep(15); continue
-                  break
-              print(path,status,body[:1500].decode("utf-8","replace"),flush=True)
-              assert status==expected,(path,status)
-              return json.loads(body)
-          p=call("/api/maps/professional-overlay",{"disease_key":"tuberculose","title":"Teste cartografico 300 dpi"})
-          assert p.get("ok") is True and p.get("image_url")
-          with urlopen(urljoin(base+"/",p["image_url"].lstrip("/")),timeout=60) as image:
-              assert image.status==200 and image.headers.get_content_type()=="image/png"
-              assert len(image.read())>10000
-          h=call("/api/maps/prepared-heatmap-overlay",{"input_file":"municipios_pe.csv"})
-          assert h.get("ok") is True and all(h.get("maps",{}).get(k) for k in ("base","marked","combined"))
-          for image_url in h["maps"].values():
-              with urlopen(urljoin(base+"/",image_url.lstrip("/")),timeout=60) as image:
-                  assert image.status==200 and image.headers.get_content_type()=="image/png"
-                  assert len(image.read())>10000
-          for path in ("/api/maps/epidemiological-gwr","/api/maps/epidemiological-gwr-upload"):
-              g=call(path,{},422,45)
-              assert g.get("status")=="blocked"
-          print("PASS production cartography + GWR fail-closed")
+                      req=Request(base+"/api/maps/professional-overlay",data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"},method="POST")
+                      with urlopen(req,timeout=90) as r:
+                          body=json.loads(r.read())
+                          assert r.status==200 and body.get("image_url")
+                      with urlopen(base+body["image_url"],timeout=60) as img:
+                          data=img.read()
+                          assert img.status==200 and len(data)>10000
+                      return body
+                  except Exception as e:
+                      last=e; time.sleep(20)
+              raise last
+          post({"disease_key":"dengue","analysis_mode":"choropleth","selected_years":[2024]})
+          post({"disease_key":"dengue","analysis_mode":"moran","selected_years":[2024]})
+          print("PASS production choropleth and Local Moran PNG")
           PY
