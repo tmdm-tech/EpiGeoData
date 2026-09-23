@@ -18,6 +18,7 @@ from matplotlib.colors import BoundaryNorm
 from matplotlib.cm import ScalarMappable
 from matplotlib.patches import FancyArrowPatch, Patch
 from matplotlib.lines import Line2D
+from matplotlib.colors import ListedColormap
 from shapely.geometry import box
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -147,7 +148,7 @@ def _normalize_ibge7(value: object) -> str | None:
     return text if len(text) == 7 else None
 
 
-def load_municipality_totals(csv_path: Path) -> pd.DataFrame:
+def load_municipality_totals(csv_path: Path, selected_years: list[int] | None = None) -> pd.DataFrame:
     """Read a local epidemiological export and preserve IBGE code when present."""
     last_error = None
     for encoding in ("utf-8-sig", "cp1252", "latin1"):
@@ -163,14 +164,16 @@ def load_municipality_totals(csv_path: Path) -> pd.DataFrame:
         raise ValueError("Coluna 'Total' nao encontrada no CSV de agravo.")
 
     municipality_col = df.columns[0]
-    clean = df[[municipality_col, "Total"]].copy()
+    year_columns = [str(y) for y in (selected_years or []) if str(y) in df.columns]
+    value_columns = year_columns if year_columns else ["Total"]
+    clean = df[[municipality_col, *value_columns]].copy()
     raw = clean[municipality_col].astype(str).str.replace('"', "", regex=False)
     clean["codigo_ibge"] = raw.str.extract(r"^(\d{6,7})", expand=False).map(_normalize_ibge7)
     clean["municipio_nome"] = raw.str.replace(r"^\d+\s+", "", regex=True).str.title().str.strip()
-    clean["total_casos"] = pd.to_numeric(
-        clean["Total"].astype(str).str.replace("-", "0").str.replace(".", "", regex=False),
-        errors="coerce",
-    ).fillna(0)
+    numeric = clean[value_columns].apply(
+        lambda col: pd.to_numeric(col.astype(str).str.replace("-", "0").str.replace(".", "", regex=False), errors="coerce").fillna(0)
+    )
+    clean["total_casos"] = numeric.sum(axis=1)
     clean["join_name"] = clean["municipio_nome"].map(normalize_text)
     return clean.groupby(["codigo_ibge", "join_name"], dropna=False, as_index=False)["total_casos"].sum()
 
@@ -242,6 +245,8 @@ def generate_professional_choropleth(
     title: str | None = None,
     output_filename: str | None = None,
     dpi: int = DEFAULT_DPI,
+    analysis_mode: str = "choropleth",
+    selected_years: list[int] | None = None,
 ) -> ChoroplethResult:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     resolved_key, csv_path = resolve_disease_csv(disease_key)
@@ -253,7 +258,7 @@ def generate_professional_choropleth(
     municipalities_pe["total_casos"] = pd.NA
     has_local_data = csv_path is not None
     if csv_path is not None:
-        data = load_municipality_totals(csv_path)
+        data = load_municipality_totals(csv_path, selected_years=selected_years)
         # Prefer the stable seven-digit IBGE key. Name matching is retained only
         # for legacy exports that do not carry a valid territorial code.
         coded = data[data["codigo_ibge"].notna()][["codigo_ibge", "total_casos"]]
@@ -273,69 +278,82 @@ def generate_professional_choropleth(
         stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         output_file = OUTPUT_DIR / f"mapa_profissional_{resolved_key}_{stamp}.png"
 
-    # Layout cartografico de publicacao: Pernambuco centralizado, limites municipais, titulo, legenda externa, norte e escala.
+    # Layout de publicacao: enquadramento pelo continente. Fernando de Noronha nao
+    # pode ampliar artificialmente a extensao do mapa principal.
     gdf = municipalities_pe.to_crs(TARGET_CRS).copy()
-    # Matplotlib/Python 3.14 can recurse deeply while copying complex polygon paths.
-    # A sub-pixel simplification at state scale preserves municipal cartography and
-    # keeps the renderer within bounded path complexity.
     sys.setrecursionlimit(max(sys.getrecursionlimit(), 10000))
     gdf["geometry"] = gdf.geometry.simplify(25.0, preserve_topology=True)
+    mainland = gdf[~gdf["join_name"].str.contains("FERNANDO DE NORONHA", na=False)].copy()
 
-    fig, ax = plt.subplots(figsize=(12, 6), facecolor=BACKGROUND_COLOR)
+    fig, ax = plt.subplots(figsize=(16, 7.5), facecolor=BACKGROUND_COLOR)
     ax.set_facecolor(BACKGROUND_COLOR)
-    set_standard_map_frame(ax, gdf)
-
     legend_handles: list[Patch] = []
-    if has_classified_values:
-        clean_values = values.dropna().astype(float)
-        # Quantis calculados pelo pandas evitam a dependencia pesada mapclassify
-        # no caminho de download e sao estaveis mesmo com poucos valores unicos.
-        requested = min(DEFAULT_CLASSES, max(2, int(clean_values.nunique())))
-        _, edges = pd.qcut(clean_values, q=requested, retbins=True, duplicates="drop")
-        class_bins = [float(v) for v in edges]
-        palette = PALETTE[: max(1, len(class_bins) - 1)]
-        if len(class_bins) < 2:
-            class_bins = [float(clean_values.min()), float(clean_values.max()) + 1.0]
-            palette = PALETTE[:1]
-        norm = BoundaryNorm(class_bins, ncolors=len(palette), clip=True)
-        gdf["plot_color"] = [
-            palette[min(norm(float(v)), len(palette)-1)] if pd.notna(v) else NO_DATA_COLOR
-            for v in values
-        ]
-        gdf.plot(ax=ax, color=gdf["plot_color"], edgecolor="#666666", linewidth=0.45)
-        for idx, color in enumerate(palette):
-            legend_handles.append(Patch(
-                facecolor=color, edgecolor="#333333", linewidth=0.6,
-                label=f"{class_bins[idx]:.1f} – {class_bins[idx + 1]:.1f}",
-            ))
+    mode = normalize_token(analysis_mode)
+    period = ""
+    if selected_years:
+        ys=sorted(set(int(y) for y in selected_years))
+        period = str(ys[0]) if len(ys)==1 else f"{ys[0]}–{ys[-1]}"
+
+    if mode in {"moran","lisa","moran_local"} and has_classified_values:
+        try:
+            from libpysal.weights import Queen
+            from esda.moran import Moran_Local
+            import numpy as np
+            work=mainland.copy()
+            y=pd.to_numeric(work["total_casos"],errors="coerce").fillna(0).to_numpy(dtype=float)
+            if len(np.unique(y)) < 2:
+                raise ValueError("A variavel selecionada nao possui variacao espacial.")
+            w=Queen.from_dataframe(work, use_index=True)
+            w.transform="r"
+            lisa=Moran_Local(y,w,permutations=999,seed=20260923,island_weight=0)
+            sig=np.asarray(lisa.p_sim) < 0.05
+            q=np.asarray(lisa.q)
+            # PySAL quadrants: 1 HH, 2 LH, 3 LL, 4 HL.
+            labels=np.full(len(work),"Não significativo",dtype=object)
+            labels[sig & (q==1)]="Alto-Alto (perto-perto)"
+            labels[sig & (q==3)]="Baixo-Baixo (longe-longe)"
+            labels[sig & (q==4)]="Alto-Baixo (perto-longe)"
+            labels[sig & (q==2)]="Baixo-Alto (longe-perto)"
+            work["lisa_cluster"]=labels
+            colors={"Alto-Alto (perto-perto)":"#e41a1c","Baixo-Baixo (longe-longe)":"#1f78b4",
+                    "Alto-Baixo (perto-longe)":"#fdae6b","Baixo-Alto (longe-perto)":"#9bd7ea",
+                    "Não significativo":"#f2f2f2"}
+            work.plot(ax=ax,color=work["lisa_cluster"].map(colors),edgecolor="#666666",linewidth=.45)
+            legend_handles=[Patch(facecolor=v,edgecolor="#333333",label=k) for k,v in colors.items()]
+            variable_label="Cluster LISA (p < 0,05; 999 permutações)"
+            resolved_title=f"Moran Local (LISA) de {display_name} – Pernambuco"
+        except ImportError as exc:
+            raise RuntimeError("Dependencias cientificas do Moran Local indisponiveis (esda/libpysal).") from exc
+    elif has_classified_values:
+        clean_values=pd.to_numeric(mainland["total_casos"],errors="coerce").dropna().astype(float)
+        requested=min(DEFAULT_CLASSES,max(2,int(clean_values.nunique())))
+        _,edges=pd.qcut(clean_values,q=requested,retbins=True,duplicates="drop")
+        class_bins=[float(v) for v in edges]
+        palette=PALETTE[:max(1,len(class_bins)-1)]
+        if len(class_bins)<2:
+            class_bins=[float(clean_values.min()),float(clean_values.max())+1.0]; palette=PALETTE[:1]
+        norm=BoundaryNorm(class_bins,ncolors=len(palette),clip=True)
+        mainland["plot_color"]=[palette[min(norm(float(v)),len(palette)-1)] if pd.notna(v) else NO_DATA_COLOR for v in mainland["total_casos"]]
+        mainland.plot(ax=ax,color=mainland["plot_color"],edgecolor="#666666",linewidth=.45)
+        legend_handles=[Patch(facecolor=color,edgecolor="#333333",linewidth=.6,label=f"{class_bins[i]:.1f} – {class_bins[i+1]:.1f}") for i,color in enumerate(palette)]
     else:
-        gdf.plot(ax=ax, color=NO_DATA_COLOR, edgecolor="#777777", linewidth=0.45)
-        legend_handles.append(
-            Patch(facecolor=NO_DATA_COLOR, edgecolor="#777777", label="Sem dados locais")
-        )
+        mainland.plot(ax=ax,color=NO_DATA_COLOR,edgecolor="#777777",linewidth=.45)
+        legend_handles=[Patch(facecolor=NO_DATA_COLOR,edgecolor="#777777",label="Sem dados locais")]
 
-    # Contorno estadual mais espesso, como no modelo cartografico de referencia.
-    gdf.dissolve().boundary.plot(ax=ax, color="#111111", linewidth=1.8)
+    mainland.dissolve().boundary.plot(ax=ax,color="#111111",linewidth=1.8)
+    set_standard_map_frame(ax, mainland)
     add_cartographic_elements(ax)
-
-    ax.set_title(resolved_title, fontsize=18, fontweight="bold", pad=18, color="#111111")
-    legend = ax.legend(
-        handles=legend_handles,
-        title=variable_label,
-        loc="lower center",
-        bbox_to_anchor=(0.5, -0.14),
-        ncol=min(6, max(1, len(legend_handles))),
-        frameon=False,
-        fontsize=9.5,
-        title_fontsize=10.5,
-    )
+    title_text=resolved_title + (f"\nPeríodo: {period}" if period else "")
+    ax.set_title(title_text,fontsize=18,fontweight="bold",pad=16,color="#111111")
+    ax.legend(handles=legend_handles,title=variable_label,loc="lower center",
+              bbox_to_anchor=(0.5,-0.18),ncol=min(5,max(1,len(legend_handles))),
+              frameon=False,fontsize=10,title_fontsize=11)
     ax.set_axis_off()
-
-    fig.subplots_adjust(left=0.025, right=0.985, top=0.88, bottom=0.20)
-    source_label = "DATASUS / cartografia municipal IBGE" if has_local_data else "Cartografia municipal IBGE"
-    fig.text(0.025, 0.025, f"Fonte: {source_label}. Elaboracao: EpiGeoData.", fontsize=8.5, color="#333333")
+    fig.subplots_adjust(left=.02,right=.99,top=.88,bottom=.21)
+    source_label="DATASUS / cartografia municipal IBGE" if has_local_data else "Cartografia municipal IBGE"
+    fig.text(.02,.025,f"Fonte: {source_label}. Elaboração: EpiGeoData.",fontsize=9,color="#333333")
     try:
-        fig.savefig(output_file, dpi=dpi, facecolor=BACKGROUND_COLOR, bbox_inches="tight")
+        fig.savefig(output_file,dpi=dpi,facecolor=BACKGROUND_COLOR,bbox_inches="tight")
     finally:
         plt.close(fig)
 
