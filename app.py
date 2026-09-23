@@ -1182,6 +1182,9 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
     payload = request.get_json(silent=True) or {}
     disease_key = str(payload.get("disease_key", "tuberculose")).strip()
     title = str(payload.get("title", "")).strip() or DEFAULT_PROFESSIONAL_MAP_TITLE
+    analysis_mode = str(payload.get("analysis_mode", "choropleth")).strip().lower()
+    selected_years = payload.get("selected_years") or []
+    selected_years = [int(y) for y in selected_years if str(y).isdigit()]
 
     try:
         from scripts.generate_choropleth_brazil import generate_professional_choropleth
@@ -1189,6 +1192,8 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
         result = generate_professional_choropleth(
             disease_key=disease_key,
             title=title,
+            analysis_mode=analysis_mode,
+            selected_years=selected_years,
         )
     except FileNotFoundError as error:
         return {"error": str(error)}, 404
