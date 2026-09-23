@@ -149,6 +149,7 @@ def generate_epidemiological_gwr_maps(
     title_prefix: str = "Pernambuco - Analise Espacial Epidemiologica",
     save_joined_geodata: bool = True,
     *, analysis_year: int | None = None,
+    display_ibge_codes: set[str] | list[str] | None = None,
 ) -> EpidemiologicalGWROutput:
     """Fit and export GWR only after the provenance/coverage gate authorizes the panel."""
     import geopandas as gpd
@@ -175,11 +176,17 @@ def generate_epidemiological_gwr_maps(
     projected["gwr_residuo"]=np.asarray(result.resid_response,dtype=float).reshape(-1)
     out=Path(output_dir); out.mkdir(parents=True,exist_ok=True)
     map_paths={}
+    plot_frame=projected
+    if display_ibge_codes is not None:
+        wanted={_normalize_ibge_code(code) for code in display_ibge_codes}
+        plot_frame=projected[projected["_ibge_code"].isin(wanted)].copy()
+        if plot_frame.empty:
+            raise DataValidationError("Selected territorial display scope has no fitted municipalities")
     fields=["gwr_local_r2",*["gwr_"+v for v in independent_vars]]
     for field in fields:
         fig,ax=plt.subplots(figsize=(9,9))
-        projected.plot(column=field,ax=ax,legend=True,cmap="viridis",edgecolor="0.55",linewidth=.35,
-                       scheme="quantiles" if projected[field].nunique()>=n_classes else None,k=n_classes)
+        plot_frame.plot(column=field,ax=ax,legend=True,cmap="viridis",edgecolor="0.55",linewidth=.35,
+                       scheme="quantiles" if plot_frame[field].nunique()>=n_classes else None,k=n_classes)
         ax.set_axis_off(); ax.set_title(f"{title_prefix} | {analysis_year} | {field}")
         path=out/f"gwr_{analysis_year}_{re.sub(r'[^A-Za-z0-9_-]+','_',field)}.png"
         fig.savefig(path,dpi=dpi,bbox_inches="tight",facecolor="white"); plt.close(fig); map_paths[field]=path
