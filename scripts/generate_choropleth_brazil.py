@@ -14,7 +14,6 @@ import geopandas as gpd
 import mapclassify as mc
 import matplotlib.pyplot as plt
 import pandas as pd
-import contextily as ctx
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import FancyArrowPatch, Patch
 from matplotlib.lines import Line2D
@@ -308,15 +307,9 @@ def generate_professional_choropleth(
     ax.set_xlim(minx, maxx)
     ax.set_ylim(miny, maxy)
 
-    try:
-        ctx.add_basemap(
-            ax,
-            source=ctx.providers.CartoDB.Positron,
-            attribution_size=10,
-        )
-    except Exception:
-        # Fallback resiliente para ambientes sem acesso/compatibilidade com tiles remotos.
-        pass
+    # Basemap remoto removido: CartoDB passou a exigir API key e a
+    # requisicao externa fazia a geracao falhar/ficar dependente de rede.
+    # A malha municipal local do IBGE e suficiente para o mapa cientifico.
 
     legend_handles: list[Line2D] = []
     if has_classified_values:
