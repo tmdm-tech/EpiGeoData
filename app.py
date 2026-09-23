@@ -1314,18 +1314,6 @@ def generate_prepared_heatmap_overlay() -> tuple[dict, int]:
 
 @app.post("/api/maps/epidemiological-gwr")
 def generate_epidemiological_gwr_maps_api() -> tuple[dict, int]:
-    return {
-        "status": "blocked",
-        "error": "GWR indisponivel ate homologacao cientifica dos dados",
-        "scientific_gate": True,
-        "issues": [
-            "proveniencia oficial da malha/GERES deve estar homologada",
-            "painel municipio-periodo epidemiologia-clima deve estar alinhado 1:1",
-            "grao espacial e temporal deve ser validado",
-            "diagnosticos estatisticos do modelo devem ser aprovados"
-        ],
-    }, 422
-
     payload = request.get_json(silent=True) or {}
 
     table_path_raw = str(payload.get("table_path", "")).strip()
