@@ -2399,7 +2399,13 @@
 
       let lastProfessionalMapSignature = "";
       function currentProfessionalMapSignature() {
-        return [resolveDiseaseApiKey(selectedDisease.name), selectedDemoMode, Array.from(selectedYears).map(Number).sort((a,b)=>a-b).join(",")].join("|");
+        return [
+          resolveDiseaseApiKey(selectedDisease.name),
+          selectedDemoMode,
+          Array.from(selectedClimates).sort().join(","),
+          Array.from(selectedYears).map(Number).sort((a,b)=>a-b).join(","),
+          selectedSocioVariable, selectedSocioScope, activeGeres, municipioSelect?.value || ""
+        ].join("|");
       }
 
       async function generateProfessionalOverlayMap(title) {
@@ -2413,7 +2419,12 @@
               disease_key: diseaseKey,
               title,
               analysis_mode: analysisModeSelect?.value || selectedDemoMode || "choropleth",
-              selected_years: Array.from(selectedYears).map(Number).filter(Number.isFinite).sort((a,b)=>a-b)
+              selected_years: Array.from(selectedYears).map(Number).filter(Number.isFinite).sort((a,b)=>a-b),
+              selected_climates: Array.from(selectedClimates).map((label) => climateApiKeyByName[label]).filter(Boolean),
+              socio_variable: selectedSocioVariable,
+              socio_scope: selectedSocioScope,
+              geres: activeGeres,
+              municipio_id: municipioSelect?.value || ""
             })
           });
 
@@ -3703,13 +3714,29 @@
         passwordInput.focus();
       }
 
-      async function autoGenerateIfReady() {
-        if (selectedClimates.size > 0) {
-          await generateOverlay();
-        }
+      let realtimeRefreshTimer = null;
+      let realtimeRefreshSerial = 0;
+      function scheduleRealtimeScientificRefresh(reason = "seleção atualizada") {
+        const serial = ++realtimeRefreshSerial;
+        lastProfessionalMapSignature = "";
+        if (realtimeRefreshTimer) clearTimeout(realtimeRefreshTimer);
+        realtimeRefreshTimer = setTimeout(async () => {
+          if (serial !== realtimeRefreshSerial) return;
+          try {
+            if (selectedClimates.size > 0) await generateOverlay({ skipProfessional: true });
+            if (serial !== realtimeRefreshSerial) return;
+            if (!options.skipProfessional) await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
+          } catch (error) {
+            console.error("Falha na atualização científica em tempo real", error);
+          }
+        }, 180);
       }
 
-      async function generateOverlay() {
+      async function autoGenerateIfReady() {
+        if (selectedClimates.size > 0) scheduleRealtimeScientificRefresh("seleção atualizada");
+      }
+
+      async function generateOverlay(options = {}) {
         if (selectedClimates.size === 0) {
           updateRobotMessage("Selecione ao menos uma variavel climatica antes de gerar o mapa sobreposto.");
           robotBlink();
@@ -3721,6 +3748,7 @@
         clearOverlayLayer();
         const base = getCurrentBaseFeatureCollection() || featureCollectionFromGeoJson(estadoGeoCache);
         const gwrRows = await buildGwrOverlayData(base);
+        const activeMode = selectedDemoMode || "overlay";
         const byMunicipio = new Map(gwrRows.map((row) => [normalizeName(row.municipio), row]));
 
         const values = gwrRows.map((row) => row.gwrScore);
@@ -3732,12 +3760,17 @@
           const row = byMunicipio.get(normalizeName(municipio));
           const score = row ? row.gwrScore : 0.4;
           const r = norm(score, vMin, vMax);
-          return {
-            color: "#2b2440",
-            weight: 1.4,
-            fillColor: gwrColor(score),
-            fillOpacity: 0.22 + r * 0.58,
-          };
+          if (activeMode === "kernel" || activeMode === "heat") {
+            return { color: "#514764", weight: 0.8, fillColor: "#eee8f6", fillOpacity: 0.10 };
+          }
+          if (activeMode === "density") {
+            return { color: "#30384a", weight: 0.9, fillColor: gwrColor(score), fillOpacity: 0.12 + r * 0.72 };
+          }
+          if (activeMode === "moran") {
+            const cls = score >= (vMin + vMax) / 2 ? "#e34a33" : "#3182bd";
+            return { color: "#555", weight: 0.9, fillColor: cls, fillOpacity: 0.68 };
+          }
+          return { color: "#2b2440", weight: 1.4, fillColor: gwrColor(score), fillOpacity: 0.22 + r * 0.58 };
         };
 
         if (municipioLayer) {
@@ -3756,7 +3789,7 @@
         await drawSelectedClimateLayers();
 
         gwrMarkerLayer = L.layerGroup().addTo(map);
-        gwrRows.forEach((row) => {
+        if (activeMode === "gwr" || activeMode === "overlay") gwrRows.forEach((row) => {
           const marker = L.circleMarker([row.lat, row.lon], {
             radius: 4 + row.gwrScore * 6,
             color: "#1f1a2b",
@@ -3782,14 +3815,14 @@
         const climateLabel = Array.from(selectedClimates).join(" + ") || "Clima";
         const geresLabel = activeGeres === "ALL" ? "PE" : activeGeres;
         const overlayName = climateLabel + " x " + selectedDisease.name + " : " + geresLabel;
-        lastDemoLabel = "GWR - " + overlayName;
+        lastDemoLabel = describeMode(activeMode) + " - " + overlayName;
         addDiseaseLegend(overlayName);
         // Preserve the analysis method selected by the user.
 
         animateRobot("bounce");
         robotSmile();
         updateRobotMessage(
-          "Mapa sobreposto (GWR) gerado: <b>" + overlayName + "</b>." +
+          "Mapa científico (" + describeMode(activeMode) + ") atualizado: <b>" + overlayName + "</b>." +
             "<br/><small>Base em tempo real: pluviosidade, temperatura, cobertura vegetal, relevo e hidrografia + DATASUS.</small>"
         );
 
@@ -4130,6 +4163,7 @@
       analysisModeSelect.addEventListener("change", () => {
         selectedDemoMode = analysisModeSelect.value;
         refreshDemonstratorFromSelection("metodo atualizado");
+        scheduleRealtimeScientificRefresh("método atualizado");
       });
 
       downloadDemoImageBtn.addEventListener("click", async () => {
