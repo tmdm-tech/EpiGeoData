@@ -81,6 +81,44 @@ jobs:
                   assert payload.get('summary', {}).get('total_municipios', 0) > 0, f'{disease}: local CSV produced no municipalities'
               else:
                   assert source is None, f'{disease}: unexpected local CSV source {source}'
+          # Validate the new live DATASUS adapter after Render has deployed this commit.
+          # Official TABNET can be slow or temporarily unavailable, so 200 means
+          # live data; 503 is accepted only when the API returns an explicit,
+          # labelled local fallback rather than silently treating it as live.
+          for disease in ('dengue', 'tuberculose', 'esquistossomose'):
+              body = None
+              status = None
+              path = f'/api/datasus/live/{disease}'
+              request = Request(base + path, method='GET')
+              for attempt in range(1, 5):
+                  try:
+                      with urlopen(request, timeout=90) as response:
+                          status = response.status
+                          body = response.read(2_000_000)
+                      break
+                  except HTTPError as error:
+                      status = error.code
+                      body = error.read(2_000_000)
+                      if status == 503:
+                          break
+                      raise
+                  except (URLError, TimeoutError) as error:
+                      print(f'GET {path}: DATASUS attempt {attempt}/4 failed: {error}', flush=True)
+                      if attempt == 4:
+                          raise
+                      time.sleep(15)
+              live_payload = json.loads(body)
+              assert status in (200, 503), f'{disease}: unexpected live adapter HTTP {status}'
+              if status == 200:
+                  assert live_payload.get('status') == 'live', f'{disease}: HTTP 200 must be labelled live'
+                  assert live_payload.get('source') == 'DATASUS/TABNET', f'{disease}: wrong live source'
+                  assert live_payload.get('fallback_used') is False, f'{disease}: live response cannot use fallback'
+                  assert isinstance(live_payload.get('rows'), list) and live_payload['rows'], f'{disease}: live TABNET returned no rows'
+              else:
+                  assert live_payload.get('status') == 'unavailable', f'{disease}: 503 must be explicit unavailable'
+                  assert isinstance(live_payload.get('fallback'), dict), f'{disease}: 503 must expose labelled fallback'
+              print(f'GET {path}: adapter status={live_payload.get("status")} HTTP={status}', flush=True)
+
           invalid = json.loads(check('/api/catalog/assess', 'POST', {}, 400))
           assert 'error' in invalid, 'Invalid catalog request must return an error'
           for path in ('/api/maps/epidemiological-gwr', '/api/maps/epidemiological-gwr-upload'):
