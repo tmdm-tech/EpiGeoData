@@ -4,6 +4,8 @@ import json
 import os
 import re
 import zipfile
+import time
+import unicodedata
 from functools import lru_cache
 from pathlib import Path
 from datetime import datetime
@@ -1184,6 +1186,137 @@ def get_disease_data(disease_key: str) -> tuple[dict, int]:
         }, 404
 
     return jsonify(payload), 200
+
+
+
+def _inmet_annual_station_summary(year: int) -> list[dict]:
+    """Official INMET automatic-station annual observations for Pernambuco."""
+    if not 2000 <= int(year) <= datetime.utcnow().year:
+        raise ValueError("Ano INMET fora da série automática publicada")
+    key=f"inmet-historical:{year}"
+    cached=REALTIME_CACHE.get(key)
+    if cached and time.time()-cached[0] < 24*3600:
+        return cached[1]["rows"]
+    url=f"https://portal.inmet.gov.br/uploads/dadoshistoricos/{year}.zip"
+    req=Request(url,headers={"User-Agent":"EpiGeoData/1.0 scientific-research"})
+    with urlopen(req,timeout=45) as response:
+        payload=response.read()
+    rows=[]
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        for name in archive.namelist():
+            upper=unicodedata.normalize("NFKD",name).encode("ascii","ignore").decode("ascii").upper()
+            if "_PE_" not in upper or not upper.endswith(".CSV"):
+                continue
+            raw=archive.read(name)
+            text_data=None
+            for encoding in ("utf-8-sig","latin-1"):
+                try:
+                    text_data=raw.decode(encoding); break
+                except UnicodeDecodeError: pass
+            if not text_data: continue
+            lines=text_data.splitlines()
+            metadata={}
+            header_idx=None
+            for idx,line in enumerate(lines[:20]):
+                parts=[p.strip().strip('"') for p in line.split(";")]
+                if len(parts)>=2:
+                    k=unicodedata.normalize("NFKD",parts[0]).encode("ascii","ignore").decode("ascii").upper()
+                    metadata[k.rstrip(":")]=parts[1].replace(",",".")
+                if "DATA" in parts[0].upper() and len(parts)>5:
+                    header_idx=idx; break
+            if header_idx is None:
+                header_idx=next((i for i,l in enumerate(lines[:20]) if "PRECIPITA" in l.upper() and "TEMPERATURA" in l.upper()),None)
+            if header_idx is None: continue
+            def meta(*keys):
+                for wanted in keys:
+                    for k,v in metadata.items():
+                        if wanted in k: return v
+                return None
+            try:
+                lat=float(meta("LATITUDE")); lon=float(meta("LONGITUDE"))
+            except (TypeError,ValueError): continue
+            station=meta("ESTACAO") or Path(name).stem
+            reader=csv.DictReader(io.StringIO("\n".join(lines[header_idx:])),delimiter=";")
+            rain=[]; temp=[]
+            for rec in reader:
+                for col,val in rec.items():
+                    if val is None: continue
+                    normcol=unicodedata.normalize("NFKD",str(col)).encode("ascii","ignore").decode("ascii").upper()
+                    sval=str(val).strip().replace(",",".")
+                    try: num=float(sval)
+                    except ValueError: continue
+                    if num >= 9999: continue
+                    if "PRECIPITACAO TOTAL" in normcol: rain.append(num)
+                    elif "TEMPERATURA DO AR" in normcol and ("BULBO SECO" in normcol or "HORARIA" in normcol): temp.append(num)
+            if rain or temp:
+                rows.append({"estacao":station,"lat":lat,"lon":lon,"precipitacao_anual_mm":sum(rain) if rain else None,
+                             "temperatura_media_c":sum(temp)/len(temp) if temp else None,
+                             "n_precipitacao":len(rain),"n_temperatura":len(temp),"source_url":url})
+    if not rows: raise RuntimeError(f"INMET não retornou estações automáticas de PE para {year}")
+    REALTIME_CACHE[key]=(time.time(),{"rows":rows})
+    return rows
+
+
+def _disease_year_by_ibge(disease_key: str, year: int) -> tuple[dict[str,float],str]:
+    from scripts.generate_choropleth_brazil import resolve_disease_csv, normalize_text
+    resolved,csv_path=resolve_disease_csv(disease_key)
+    if csv_path is None: raise FileNotFoundError(f"Sem CSV epidemiológico local para {resolved}")
+    frame=pd.read_csv(csv_path,sep=";",skiprows=3,dtype=str,encoding="utf-8-sig")
+    year_col=str(year)
+    if year_col not in frame.columns: raise ValueError(f"{resolved}: ano {year} indisponível")
+    name_col=frame.columns[0]
+    values={}
+    for _,row in frame.iterrows():
+        raw=str(row.get(year_col,"")).strip().replace(",",".")
+        if raw in ("","-","...","nan"): continue
+        try: value=float(raw)
+        except ValueError: continue
+        label=re.sub(r"^\\d{6,7}\\s+","",str(row[name_col])).strip()
+        values[normalize_text(label)]=value
+    return values,str(csv_path)
+
+
+def _build_runtime_gwr_panel(disease_key: str, year: int, predictors: list[str]) -> tuple[pd.DataFrame,dict]:
+    from scripts.generate_choropleth_brazil import load_pernambuco_municipalities, normalize_text
+    allowed={"temperatura_media_c","precipitacao_anual_mm"}
+    if not predictors or any(p not in allowed for p in predictors):
+        raise ValueError("Preditores GWR válidos: temperatura_media_c, precipitacao_anual_mm")
+    stations=_inmet_annual_station_summary(year)
+    epi,epi_path=_disease_year_by_ibge(disease_key,year)
+    gdf=load_pernambuco_municipalities().to_crs("EPSG:4674").copy()
+    import math
+    panel=[]
+    for _,feature in gdf.iterrows():
+        name=normalize_text(feature.get("name_muni",""))
+        outcome=epi.get(name)
+        if outcome is None: continue
+        centroid=feature.geometry.centroid
+        usable=[s for s in stations if all(s.get(p) is not None for p in predictors)]
+        if not usable: continue
+        station=min(usable,key=lambda s:(s["lat"]-centroid.y)**2+(s["lon"]-centroid.x)**2)
+        row={"municipio_ibge":str(feature["codigo_ibge"]),"ano":int(year),"desfecho":float(outcome),
+             **{p:float(station[p]) for p in predictors},
+             "estacao_inmet":station["estacao"],
+             "epidemiology_provenance":json.dumps({"organization":"DATASUS","dataset":disease_key,"version":str(year),"retrieved_at":datetime.utcnow().strftime("%Y-%m-%d"),"reference_url":TABNET_PORTAL_URL,"method":"município-ano; arquivo TABNET da plataforma","verified":True},ensure_ascii=False),
+             "climate_provenance":json.dumps({"organization":"INMET","dataset":"Dados Históricos Anuais - estações automáticas","version":str(year),"retrieved_at":datetime.utcnow().strftime("%Y-%m-%d"),"reference_url":station["source_url"],"method":"agregação anual da estação automática mais próxima ao centróide municipal; sem imputação","verified":True},ensure_ascii=False),
+             "territory_provenance":json.dumps({"organization":"IBGE","dataset":"Malha Municipal Digital","version":"2025","retrieved_at":datetime.utcnow().strftime("%Y-%m-%d"),"reference_url":"https://www.ibge.gov.br/geociencias/organizacao-do-territorio/estrutura-territorial/15774-malhas","method":"código municipal oficial e geometria SIRGAS 2000","verified":True},ensure_ascii=False)}
+        panel.append(row)
+    frame=pd.DataFrame(panel)
+    if len(frame) < max(30,len(predictors)+10):
+        raise RuntimeError(f"Cobertura insuficiente para GWR: {len(frame)} municípios completos")
+    meta={"n_municipios":len(frame),"n_estacoes_inmet":len(stations),"epidemiology_file":epi_path,
+          "method":"INMET anual; estação automática mais próxima ao centróide; somente casos completos; sem imputação"}
+    return frame,meta
+
+
+@app.get("/api/gwr/readiness/<disease_key>/<int:year>")
+def gwr_readiness(disease_key: str, year: int):
+    predictors=[p for p in request.args.get("predictors","temperatura_media_c,precipitacao_anual_mm").split(",") if p]
+    try:
+        panel,meta=_build_runtime_gwr_panel(disease_key,year,predictors)
+        return jsonify({"ready":True,"year":year,"disease_key":disease_key,"predictors":predictors,**meta}),200
+    except Exception as exc:
+        return jsonify({"ready":False,"year":year,"disease_key":disease_key,"predictors":predictors,"reason":str(exc)}),422
 
 
 @app.post("/api/maps/professional-overlay")
