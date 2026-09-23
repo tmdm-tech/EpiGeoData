@@ -2412,10 +2412,8 @@
         const diseaseKey = resolveDiseaseApiKey(selectedDisease.name);
 
         try {
-          const response = await fetch("/api/maps/professional-overlay", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          const currentMode = analysisModeSelect?.value || selectedDemoMode || "choropleth";
+          const requestBody = {
               disease_key: diseaseKey,
               title,
               analysis_mode: analysisModeSelect?.value || selectedDemoMode || "choropleth",
@@ -2425,18 +2423,28 @@
               socio_scope: selectedSocioScope,
               geres: activeGeres,
               municipio_id: municipioSelect?.value || ""
-            })
+            };
+          const endpoint = currentMode === "gwr" ? "/api/maps/gwr-runtime" : "/api/maps/professional-overlay";
+          const response = await fetch(endpoint, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
           });
-
-          if (!response.ok) {
-            throw new Error("Falha ao gerar mapa profissional");
-          }
-
           const payload = await response.json();
-          if (!payload || !payload.image_url) {
-            throw new Error("Resposta sem URL de mapa");
+          if (!response.ok) {
+            throw new Error(payload?.details || payload?.error || "Falha ao gerar mapa profissional");
           }
-
+          if (currentMode === "gwr") {
+            const gwrUrl = payload?.maps?.gwr_local_r2 || Object.values(payload?.maps || {})[0];
+            if (!gwrUrl) throw new Error("GWR validado sem mapa retornado");
+            lastProfessionalMapUrl = gwrUrl;
+            lastProfessionalMapSignature = currentProfessionalMapSignature();
+            professionalMapPreview.src = gwrUrl;
+            professionalMapPreview.classList.add("visible");
+            professionalMapStatus.innerHTML =
+              "<strong>GWR validado:</strong> " + payload.records_used + " municípios | bandwidth " +
+              Number(payload.bandwidth).toFixed(2) + " | " + payload.methodology;
+            return;
+          }
+          if (!payload || !payload.image_url) throw new Error("Resposta sem URL de mapa");
           lastProfessionalMapUrl = payload.image_url;
           lastProfessionalMapSignature = currentProfessionalMapSignature();
           professionalMapPreview.src = payload.image_url;
