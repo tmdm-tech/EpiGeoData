@@ -75,6 +75,7 @@ def harmonize(
     epidemiology: list[dict], climate: list[dict], territories: list[dict],
     *, expected_years: list[int], expected_municipalities: list[str],
     outcome_field: str = "positividade_percentual", climate_field: str = "temperatura_c",
+    climate_fields: list[str] | None = None,
 ) -> list[dict]:
     """Strict 1:1 municipality-year-stratum join; climate is municipality-year.
 
@@ -102,9 +103,13 @@ def harmonize(
     if territory_codes != codes:
         raise HarmonizationError(f"Territorial mismatch: missing={sorted(codes-territory_codes)}, unexpected={sorted(territory_codes-codes)}")
     climatic = []
+    requested_climate_fields = climate_fields or [climate_field]
+    if not requested_climate_fields:
+        raise HarmonizationError("At least one environmental predictor is required")
     for raw in climate:
         code, year = _code(raw["municipio_ibge"]), _year(raw["ano"])
-        climatic.append({"municipio_ibge": code, "ano": year, climate_field: _number(raw.get(climate_field), climate_field), "provenance": _source(raw, "climate")})
+        values = {field: _number(raw.get(field), field) for field in requested_climate_fields}
+        climatic.append({"municipio_ibge": code, "ano": year, **values, "provenance": _source(raw, "climate")})
     climate_index = _unique(climatic, ("municipio_ibge", "ano"), "climate")
     expected = {(code, year) for code in codes for year in years}
     if set(climate_index) != expected:
@@ -126,7 +131,7 @@ def harmonize(
         epi = epi_index[(code, year, stratum)]
         clim = climate_index[(code, year)]
         territory = territory_index[(code,)]
-        result.append({"municipio_ibge": code, "ano": year, "estrato": stratum, "geres": territory["geres"], outcome_field: epi[outcome_field], climate_field: clim[climate_field], "epidemiology_provenance": epi["provenance"], "climate_provenance": clim["provenance"], "territory_provenance": territory["provenance"]})
+        result.append({"municipio_ibge": code, "ano": year, "estrato": stratum, "geres": territory["geres"], outcome_field: epi[outcome_field], **{field: clim[field] for field in requested_climate_fields}, "epidemiology_provenance": epi["provenance"], "climate_provenance": clim["provenance"], "territory_provenance": territory["provenance"]})
     return result
 
 
