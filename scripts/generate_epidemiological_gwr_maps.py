@@ -137,32 +137,54 @@ def generate_epidemiological_gwr_maps(
     dependent_var: str,
     independent_vars: list[str],
     output_dir: str | Path = DEFAULT_OUTPUT_DIR,
-    data_ibge_column: str = "codigo_ibge",
-    shape_ibge_column: str = "codigo_ibge",
-    classification_scheme: str = "natural_breaks",
+    data_ibge_column: str = "municipio_ibge",
+    shape_ibge_column: str = "code_muni",
+    classification_scheme: str = "quantiles",
     n_classes: int = 5,
     target_crs: str = DEFAULT_TARGET_CRS,
     dpi: int = 300,
     title_prefix: str = "Pernambuco - Analise Espacial Epidemiologica",
     save_joined_geodata: bool = True,
-    *,
-    analysis_year: int | None = None,
+    *, analysis_year: int | None = None,
 ) -> EpidemiologicalGWROutput:
-    """Fail closed until provenance approval; no files are created on rejection.
-
-    Once authorization is implemented, the spatial and numerical validators above
-    must be called before any model output is persisted. Never bypass the gate.
-    """
-    if analysis_year is None:
-        raise DataValidationError("analysis_year is mandatory: choose a single year explicitly")
-    if not isinstance(analysis_year, int) or isinstance(analysis_year, bool):
-        raise DataValidationError("analysis_year must be an integer")
+    """Fit and export GWR only after the provenance/coverage gate authorizes the panel."""
+    import geopandas as gpd
+    import pandas as pd
+    import numpy as np
+    import matplotlib.pyplot as plt
+    if analysis_year is None or not isinstance(analysis_year, int) or isinstance(analysis_year, bool):
+        raise DataValidationError("analysis_year is mandatory and must be an integer")
     if not independent_vars or len(set(independent_vars)) != len(independent_vars):
         raise DataValidationError("Specify distinct independent variables")
     require_authorized_gwr(tabular_data_path, municipalities_path, dependent_var, independent_vars)
-    # The authorization function currently always raises. Do not append a
-    # reachable fitting path until official data provenance is homologated.
-    raise ModelNotAuthorized("Scientific GWR authorization is not implemented")
+    table=pd.read_csv(tabular_data_path)
+    municipalities=gpd.read_file(municipalities_path)
+    data_col=data_ibge_column or "municipio_ibge"
+    shape_col=shape_ibge_column or ("code_muni" if "code_muni" in municipalities.columns else "municipio_ibge")
+    joined=_validate_spatial_inputs(table,municipalities,year=analysis_year,dependent=dependent_var,
+                                    predictors=independent_vars,table_code=data_col,shape_code=shape_col)
+    projected,bw,result=_fit_validated_gwr(joined,dependent_var,independent_vars,target_crs)
+    projected=projected.copy()
+    params=np.asarray(result.params,dtype=float)
+    projected["gwr_intercept"]=params[:,0]
+    for idx,var in enumerate(independent_vars,1): projected[f"gwr_{var}"]=params[:,idx]
+    projected["gwr_local_r2"]=np.asarray(result.localR2,dtype=float).reshape(-1)
+    projected["gwr_residuo"]=np.asarray(result.resid_response,dtype=float).reshape(-1)
+    out=Path(output_dir); out.mkdir(parents=True,exist_ok=True)
+    map_paths={}
+    fields=["gwr_local_r2",*["gwr_"+v for v in independent_vars]]
+    for field in fields:
+        fig,ax=plt.subplots(figsize=(9,9))
+        projected.plot(column=field,ax=ax,legend=True,cmap="viridis",edgecolor="0.55",linewidth=.35,
+                       scheme="quantiles" if projected[field].nunique()>=n_classes else None,k=n_classes)
+        ax.set_axis_off(); ax.set_title(f"{title_prefix} | {analysis_year} | {field}")
+        path=out/f"gwr_{analysis_year}_{re.sub(r'[^A-Za-z0-9_-]+','_',field)}.png"
+        fig.savefig(path,dpi=dpi,bbox_inches="tight",facecolor="white"); plt.close(fig); map_paths[field]=path
+    joined_path=None
+    if save_joined_geodata:
+        joined_path=out/f"gwr_{analysis_year}_resultados.geojson"
+        projected.to_crs("EPSG:4674").to_file(joined_path,driver="GeoJSON")
+    return EpidemiologicalGWROutput(joined_path,map_paths,bw,len(projected),dependent_var,independent_vars)
 
 
 def main() -> None:
