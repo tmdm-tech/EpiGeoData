@@ -135,9 +135,12 @@ def rows_to_points(df: pd.DataFrame, munis_gdf: gpd.GeoDataFrame) -> gpd.GeoData
     if points.empty:
         raise ValueError("Nenhum ponto valido foi gerado a partir da entrada.")
 
+    boundary_lookup = munis_gdf[["name_muni", "municipio_norm", "geometry"]].rename(
+        columns={"municipio_norm": "municipio_norm_boundary"}
+    )
     joined = gpd.sjoin(
         points,
-        munis_gdf[["name_muni", "municipio_norm", "geometry"]],
+        boundary_lookup,
         how="left",
         predicate="within",
     )
@@ -154,10 +157,10 @@ def aggregate_intensity_by_municipality(
     munis_gdf: gpd.GeoDataFrame,
 ) -> gpd.GeoDataFrame:
     agg = (
-        points_joined.dropna(subset=["municipio_norm_right"])  # type: ignore[call-arg]
-        .groupby("municipio_norm_right", as_index=False)["intensidade"]
+        points_joined.dropna(subset=["municipio_norm_boundary"])
+        .groupby("municipio_norm_boundary", as_index=False)["intensidade"]
         .sum()
-        .rename(columns={"municipio_norm_right": "municipio_norm", "intensidade": "intensidade_total"})
+        .rename(columns={"municipio_norm_boundary": "municipio_norm", "intensidade": "intensidade_total"})
     )
 
     result = munis_gdf.merge(agg, on="municipio_norm", how="left")
