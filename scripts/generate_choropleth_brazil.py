@@ -15,6 +15,7 @@ import mapclassify as mc
 import matplotlib.pyplot as plt
 import pandas as pd
 import contextily as ctx
+import json
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import FancyArrowPatch, Patch
 from matplotlib.lines import Line2D
@@ -136,26 +137,44 @@ def load_pernambuco_municipalities() -> gpd.GeoDataFrame:
     municipalities = gpd.read_file(CARTOGRAPHY_PATH)
     municipalities = municipalities.copy()
     municipalities["join_name"] = municipalities["name_muni"].map(normalize_text)
+    if "code_muni" in municipalities.columns:
+        municipalities["codigo_ibge"] = municipalities["code_muni"].map(_normalize_ibge7)
+    else:
+        municipalities["codigo_ibge"] = None
     return municipalities.to_crs(TARGET_CRS)
 
 
+def _normalize_ibge7(value: object) -> str | None:
+    text = re.sub(r"\D", "", str(value or ""))
+    return text if len(text) == 7 else None
+
+
 def load_municipality_totals(csv_path: Path) -> pd.DataFrame:
-    df = pd.read_csv(csv_path, sep=";", skiprows=3, encoding="latin1")
+    """Read a local epidemiological export and preserve IBGE code when present."""
+    last_error = None
+    for encoding in ("utf-8-sig", "cp1252", "latin1"):
+        try:
+            df = pd.read_csv(csv_path, sep=";", skiprows=3, encoding=encoding)
+            break
+        except (UnicodeDecodeError, pd.errors.ParserError) as exc:
+            last_error = exc
+    else:
+        raise ValueError(f"Nao foi possivel ler o CSV epidemiologico: {last_error}")
+
     if "Total" not in df.columns:
         raise ValueError("Coluna 'Total' nao encontrada no CSV de agravo.")
 
     municipality_col = df.columns[0]
     clean = df[[municipality_col, "Total"]].copy()
-    clean[municipality_col] = clean[municipality_col].astype(str).str.replace('"', "", regex=False)
-    clean["municipio_nome"] = (
-        clean[municipality_col].str.replace(r"^\d+\s+", "", regex=True).str.title().str.strip()
-    )
+    raw = clean[municipality_col].astype(str).str.replace('"', "", regex=False)
+    clean["codigo_ibge"] = raw.str.extract(r"^(\d{6,7})", expand=False).map(_normalize_ibge7)
+    clean["municipio_nome"] = raw.str.replace(r"^\d+\s+", "", regex=True).str.title().str.strip()
     clean["total_casos"] = pd.to_numeric(
         clean["Total"].astype(str).str.replace("-", "0").str.replace(".", "", regex=False),
         errors="coerce",
     ).fillna(0)
     clean["join_name"] = clean["municipio_nome"].map(normalize_text)
-    return clean.groupby("join_name", as_index=False)["total_casos"].sum()
+    return clean.groupby(["codigo_ibge", "join_name"], dropna=False, as_index=False)["total_casos"].sum()
 
 
 def build_classification(values: pd.Series, scheme: str, n_classes: int) -> mc.classifiers.MapClassifier:
@@ -259,7 +278,13 @@ def generate_professional_choropleth(
     has_local_data = csv_path is not None
     if csv_path is not None:
         data = load_municipality_totals(csv_path)
-        municipalities_pe = municipalities_pe.merge(data, on="join_name", how="left")
+        # Prefer the stable seven-digit IBGE key. Name matching is retained only
+        # for legacy exports that do not carry a valid territorial code.
+        coded = data[data["codigo_ibge"].notna()][["codigo_ibge", "total_casos"]]
+        if not coded.empty and municipalities_pe["codigo_ibge"].notna().any():
+            municipalities_pe = municipalities_pe.merge(coded, on="codigo_ibge", how="left")
+        else:
+            municipalities_pe = municipalities_pe.merge(data[["join_name", "total_casos"]], on="join_name", how="left")
         municipalities_pe["total_casos"] = municipalities_pe["total_casos_y"].fillna(0)
         municipalities_pe = municipalities_pe.drop(columns=[col for col in ["total_casos_x", "total_casos_y"] if col in municipalities_pe.columns])
 
