@@ -8,6 +8,7 @@ import re
 import sys
 import unicodedata
 from dataclasses import dataclass
+from functools import lru_cache
 from datetime import datetime
 from pathlib import Path
 
@@ -129,6 +130,7 @@ def resolve_disease_csv(disease_key: str) -> tuple[str, Path | None]:
     return key, None
 
 
+@lru_cache(maxsize=1)
 def load_pernambuco_municipalities() -> gpd.GeoDataFrame:
     if not CARTOGRAPHY_PATH.exists():
         raise FileNotFoundError(f"Cartografia municipal nao encontrada em {CARTOGRAPHY_PATH}")
@@ -250,7 +252,7 @@ def generate_professional_choropleth(
 ) -> ChoroplethResult:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     resolved_key, csv_path = resolve_disease_csv(disease_key)
-    municipalities_pe = load_pernambuco_municipalities()
+    municipalities_pe = load_pernambuco_municipalities().copy()
     variable_label = "Casos totais"
     display_name = DISEASE_METADATA.get(resolved_key, {}).get("display_name", resolved_key.replace("_", " ").title())
     resolved_title = title or f"Pernambuco | {display_name} por municipio"
