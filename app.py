@@ -1336,10 +1336,12 @@ def generate_runtime_gwr():
         panel,meta=_build_runtime_gwr_panel(disease_key,year,predictors)
         geres=str(payload.get("geres","ALL")).strip()
         municipio_id=str(payload.get("municipio_id","")).strip()
+        display_ibge_codes=None
+        display_scope="Pernambuco"
         if geres and geres.upper() not in ("ALL","TODAS AS GERES"):
             # Reuse the SES-PE territorial membership maintained in the scientific
             # cartographic module; filter before fitting, never after the model.
-            from scripts.generate_choropleth_brazil import normalize_text
+            from scripts.generate_choropleth_brazil import load_pernambuco_municipalities, normalize_text
             geres_members={
               "I GERES":["Abreu e Lima","Araçoiaba","Cabo de Santo Agostinho","Camaragibe","Chã de Alegria","Chã Grande","Glória do Goitá","Igarassu","Ilha de Itamaracá","Ipojuca","Itapissuma","Jaboatão dos Guararapes","Moreno","Olinda","Paulista","Pombos","Recife","São Lourenço da Mata","Vitória de Santo Antão"],
               "II GERES":["Bom Jardim","Buenos Aires","Carpina","Casinhas","Cumaru","Feira Nova","João Alfredo","Lagoa de Itaenga","Lagoa do Carro","Limoeiro","Machados","Nazaré da Mata","Orobó","Passira","Paudalho","Salgadinho","Surubim","Tracunhaém","Vertente do Lério","Vicência"],
@@ -1358,11 +1360,14 @@ def generate_runtime_gwr():
             if not members: raise ValueError(f"GERES desconhecida: {geres}")
             gdf_names=load_pernambuco_municipalities()[["codigo_ibge","name_muni"]].copy()
             allowed=set(gdf_names[gdf_names["name_muni"].map(normalize_text).isin({normalize_text(x) for x in members})]["codigo_ibge"].astype(str))
-            panel=panel[panel["municipio_ibge"].astype(str).isin(allowed)].copy()
+            display_ibge_codes=allowed
+            display_scope=geres.upper()
         if municipio_id:
-            panel=panel[panel["municipio_ibge"].astype(str)==municipio_id.replace(".0","")].copy()
-        if len(panel) < max(30,len(predictors)+10):
-            raise ValueError(f"Recorte territorial possui apenas {len(panel)} municípios completos; GWR não é estável neste recorte.")
+            code=municipio_id.replace(".0","")
+            if display_ibge_codes is not None and code not in display_ibge_codes:
+                raise ValueError(f"Município IBGE não pertence à GERES selecionada: {code}")
+            display_ibge_codes={code}
+            display_scope=f"Município IBGE {code}"
         runtime=Path(__file__).parent/"static"/"maps"/"runtime_gwr"
         runtime.mkdir(parents=True,exist_ok=True)
         panel_path=runtime/f"painel_{_normalize_token(disease_key)}_{year}_{'_'.join(predictors)}.csv"
@@ -1371,7 +1376,8 @@ def generate_runtime_gwr():
         result=generate_epidemiological_gwr_maps(
             panel_path,DEFAULT_PERNAMBUCO_CARTOGRAPHY,"desfecho",predictors,
             output_dir=runtime,analysis_year=year,save_joined_geodata=True,
-            title_prefix=f"EpiGeoData | GWR {disease_key} x {' + '.join(predictors)}",
+            display_ibge_codes=display_ibge_codes,
+            title_prefix=f"EpiGeoData | GWR {disease_key} x {' + '.join(predictors)} | {display_scope}",
         )
         root=Path(__file__).parent/"static"
         maps={field:"/static/"+path.relative_to(root).as_posix() for field,path in result.map_paths.items()}
@@ -1379,7 +1385,8 @@ def generate_runtime_gwr():
                         "predictors":predictors,"bandwidth":result.gwr_bandwidth,
                         "records_used":result.records_used,"maps":maps,
                         "joined_geojson":"/static/"+result.joined_data_path.relative_to(root).as_posix() if result.joined_data_path else None,
-                        "methodology":meta["method"],
+                        "methodology":meta["method"] + "; ajuste estadual e recorte cartográfico da seleção territorial",
+                        "display_scope":display_scope,
                         "sources":{"climate":"INMET Dados Históricos Anuais","epidemiology":"DATASUS/TABNET","territory":"IBGE Malha Municipal"}}),200
     except Exception as exc:
         app.logger.exception("runtime GWR failed")
