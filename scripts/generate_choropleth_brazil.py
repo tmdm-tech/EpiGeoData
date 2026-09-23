@@ -280,8 +280,7 @@ def generate_professional_choropleth(
         # Prefer the stable seven-digit IBGE key. Name matching is retained only
         # for legacy exports that do not carry a valid territorial code.
         coded = data[data["codigo_ibge"].notna()][["codigo_ibge", "total_casos"]]
-        if not coded.empty and municipalities_pe["codigo_ibge"].notna().any():
-            municipalities_pe = municipalities_pe.drop(columns=["total_casos"])
+        municipalities_pe = municipalities_pe.drop(columns=["total_casos"])
         if not coded.empty and municipalities_pe["codigo_ibge"].notna().any():
             municipalities_pe = municipalities_pe.merge(coded, on="codigo_ibge", how="left")
         else:
