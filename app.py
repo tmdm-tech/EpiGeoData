@@ -1384,11 +1384,15 @@ def _build_runtime_gwr_panel(disease_key: str, year: int, predictors: list[str])
 @app.get("/api/gwr/readiness/<disease_key>/<int:year>")
 def gwr_readiness(disease_key: str, year: int):
     predictors=[p for p in request.args.get("predictors","temperatura_media_c,precipitacao_anual_mm").split(",") if p]
-    try:
-        panel,meta=_build_runtime_gwr_panel(disease_key,year,predictors)
-        return jsonify({"ready":True,"year":year,"disease_key":disease_key,"predictors":predictors,**meta}),200
-    except Exception as exc:
-        return jsonify({"ready":False,"year":year,"disease_key":disease_key,"predictors":predictors,"reason":str(exc)}),422
+    product=_load_persisted_gwr_product(disease_key,year,predictors)
+    if product:
+        return jsonify({"ready":True,"prepared":True,"year":year,"disease_key":disease_key,
+                        "predictors":predictors,"records_used":product.get("records_used"),
+                        "prepared_at":product.get("prepared_at")}),200
+    # Readiness itself is a UI/status endpoint; it must not fetch the annual
+    # INMET archive or construct a panel synchronously.
+    return jsonify({"ready":False,"prepared":False,"year":year,"disease_key":disease_key,
+                    "predictors":predictors,"reason":"produto científico ainda não pré-calculado"}),200
 
 
 @app.post("/api/maps/gwr-runtime")
