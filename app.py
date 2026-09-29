@@ -1326,7 +1326,18 @@ def _load_persisted_gwr_product(disease_key: str, year: int, predictors: list[st
     try:
         payload=json.loads(manifest.read_text(encoding="utf-8"))
         required=[payload.get("joined_geojson_file"),*(payload.get("map_files") or {}).values()]
-        if not required or any(not rel or not Path(rel).exists() for rel in required): return None
+        if not required: return None
+        normalized=[]
+        for rel in required:
+            if not rel: return None
+            p=Path(rel)
+            if not p.is_absolute(): p=Path(__file__).parent/p
+            if not p.exists(): return None
+            normalized.append(p)
+        if payload.get("joined_geojson_file") and not Path(payload["joined_geojson_file"]).is_absolute():
+            payload["joined_geojson_file"]=str((Path(__file__).parent/payload["joined_geojson_file"]).resolve())
+        payload["map_files"]={k:str(((Path(__file__).parent/Path(v)).resolve() if not Path(v).is_absolute() else Path(v)))
+                              for k,v in (payload.get("map_files") or {}).items()}
         return payload
     except (OSError,ValueError,TypeError,json.JSONDecodeError):
         return None
