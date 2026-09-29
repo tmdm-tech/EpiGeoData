@@ -27,12 +27,12 @@ def prepare(disease: str, year: int, predictors: list[str], force: bool=False) -
         save_joined_geodata=True,dpi=300,
         title_prefix=f"EpiGeoData | GWR {disease} x {' + '.join(predictors)}"
     )
-    def rel(path): return path.relative_to(BASE).as_posix()
+    def stored(path): return str(Path(path).resolve())
     payload={
         "schema_version":1,"prepared_at":datetime.now(timezone.utc).isoformat(),
         "disease_key":disease,"year":year,"predictors":predictors,
-        "panel_file":rel(panel_path),"joined_geojson_file":rel(result.joined_data_path),
-        "map_files":{k:rel(v) for k,v in result.map_paths.items()},
+        "panel_file":stored(panel_path),"joined_geojson_file":stored(result.joined_data_path),
+        "map_files":{k:stored(v) for k,v in result.map_paths.items()},
         "bandwidth":result.gwr_bandwidth,"records_used":result.records_used,
         "methodology":meta["method"]+"; ajuste GWR estadual validado; recortes territoriais não refazem o modelo",
         "sources":{"climate":"INMET Dados Históricos Anuais","epidemiology":"DATASUS/TABNET","territory":"IBGE Malha Municipal"}
