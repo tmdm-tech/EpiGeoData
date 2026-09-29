@@ -24,6 +24,7 @@ app = Flask(__name__)
 
 REALTIME_CACHE: dict[str, tuple[float, dict]] = {}
 PROFESSIONAL_MAP_CACHE: dict[tuple, dict] = {}
+GWR_RUNTIME_CACHE: dict[tuple, dict] = {}
 REALTIME_CACHE_TTL_SECONDS = 20 * 60
 DEFAULT_PROFESSIONAL_MAP_TITLE = "EpiGeoData | Mapa Coropletico Cientifico - Pernambuco"
 DEFAULT_PREPARED_HEATMAP_FILE = "municpios_pe"
@@ -1360,10 +1361,24 @@ def generate_runtime_gwr():
     predictors=[mapping[k] for k in ("temperatura","precipitacao") if k in climate_keys]
     if not predictors:
         return jsonify({"ok":False,"error":"Selecione Temperatura e/ou Precipitação para o GWR histórico validado"}),422
+
+    geres=str(payload.get("geres","ALL")).strip()
+    municipio_id=str(payload.get("municipio_id","")).strip()
+    cache_key=(
+        _normalize_token(disease_key), year, tuple(predictors),
+        geres.upper() or "ALL", municipio_id.replace(".0","")
+    )
+    cached=GWR_RUNTIME_CACHE.get(cache_key)
+    if cached:
+        root=Path(__file__).parent/"static"
+        urls=list((cached.get("maps") or {}).values())
+        if urls and all((root/url.split("?",1)[0].removeprefix("/static/")).exists() for url in urls):
+            response=dict(cached)
+            response["cache_hit"]=True
+            return jsonify(response),200
+
     try:
         panel,meta=_build_runtime_gwr_panel(disease_key,year,predictors)
-        geres=str(payload.get("geres","ALL")).strip()
-        municipio_id=str(payload.get("municipio_id","")).strip()
         display_ibge_codes=None
         display_scope="Pernambuco"
         if geres and geres.upper() not in ("ALL","TODAS AS GERES"):
@@ -1375,10 +1390,15 @@ def generate_runtime_gwr():
                 raise ValueError(f"Município IBGE não pertence à GERES selecionada: {code}")
             display_ibge_codes={code}
             display_scope=f"Município IBGE {code}"
+
         runtime=Path(__file__).parent/"static"/"maps"/"runtime_gwr"
         runtime.mkdir(parents=True,exist_ok=True)
         panel_path=runtime/f"painel_{_normalize_token(disease_key)}_{year}_{'_'.join(predictors)}.csv"
-        panel.to_csv(panel_path,index=False)
+        # The panel is deterministic for disease/year/predictors. Avoid needless
+        # disk writes on every UI selection; the scientific gate still reads it.
+        if not panel_path.exists():
+            panel.to_csv(panel_path,index=False)
+
         from scripts.generate_epidemiological_gwr_maps import generate_epidemiological_gwr_maps
         result=generate_epidemiological_gwr_maps(
             panel_path,DEFAULT_PERNAMBUCO_CARTOGRAPHY,"desfecho",predictors,
@@ -1388,15 +1408,19 @@ def generate_runtime_gwr():
         )
         root=Path(__file__).parent/"static"
         maps={field:"/static/"+path.relative_to(root).as_posix() for field,path in result.map_paths.items()}
-        return jsonify({"ok":True,"method":"GWR","year":year,"disease_key":disease_key,
-                        "predictors":predictors,"bandwidth":result.gwr_bandwidth,
-                        "records_used":result.records_used,
-                        "records_displayed":len(display_ibge_codes) if display_ibge_codes is not None else result.records_used,
-                        "maps":maps,
-                        "joined_geojson":"/static/"+result.joined_data_path.relative_to(root).as_posix() if result.joined_data_path else None,
-                        "methodology":meta["method"] + "; ajuste estadual e recorte cartográfico da seleção territorial",
-                        "display_scope":display_scope,
-                        "sources":{"climate":"INMET Dados Históricos Anuais","epidemiology":"DATASUS/TABNET","territory":"IBGE Malha Municipal"}}),200
+        response={"ok":True,"method":"GWR","year":year,"disease_key":disease_key,
+                  "predictors":predictors,"bandwidth":result.gwr_bandwidth,
+                  "records_used":result.records_used,
+                  "records_displayed":sum(str(x).replace(".0","") in display_ibge_codes for x in panel["municipio_ibge"])
+                                      if display_ibge_codes is not None else result.records_used,
+                  "maps":maps,
+                  "joined_geojson":"/static/"+result.joined_data_path.relative_to(root).as_posix() if result.joined_data_path else None,
+                  "methodology":meta["method"] + "; ajuste GWR estadual validado e recorte cartográfico apenas para exibição territorial",
+                  "display_scope":display_scope,
+                  "cache_hit":False,
+                  "sources":{"climate":"INMET Dados Históricos Anuais","epidemiology":"DATASUS/TABNET","territory":"IBGE Malha Municipal"}}
+        GWR_RUNTIME_CACHE[cache_key]=response
+        return jsonify(response),200
     except Exception as exc:
         app.logger.exception("runtime GWR failed")
         return jsonify({"ok":False,"error":"GWR não autorizado para esta seleção","details":str(exc)}),422
