@@ -1547,7 +1547,7 @@
         [estadoLayer,geresLayerGroup,municipioLayer,overlayLayer,climateOverlayLayer,gwrMarkerLayer].forEach(apply);
         if(demoCanvas) refreshDemonstratorFromSelection("estilo do mapa atualizado");
       }
-      function refreshLayerPanel(){if(!activeLayerList)return;const rows=[];if(estadoLayer)rows.push("Limite estadual");if(geresLayer)rows.push("GERES selecionada");if(municipioLayer)rows.push("Município selecionado");if(selectedClimates.size)rows.push(...Array.from(selectedClimates).map(x=>"Clima: "+x));rows.push("Agravo: "+selectedDisease.name);activeLayerList.innerHTML=rows.map((x,i)=>'<div class="layer-row"><span>'+(i+1)+'</span><span>'+x+'</span><span>ativo</span></div>').join("");}
+      function refreshLayerPanel(){if(!activeLayerList)return;const rows=[];if(estadoLayer)rows.push("Limite estadual");if(geresLayerGroup)rows.push("GERES selecionada");if(municipioLayer)rows.push("Município selecionado");if(selectedClimates.size)rows.push(...Array.from(selectedClimates).map(x=>"Clima: "+x));rows.push("Agravo: "+selectedDisease.name);activeLayerList.innerHTML=rows.map((x,i)=>'<div class="layer-row"><span>'+(i+1)+'</span><span>'+x+'</span><span>ativo</span></div>').join("");}
 
 
       // Composicao territorial oficial das GERES/SES-PE.
