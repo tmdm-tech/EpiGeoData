@@ -1453,30 +1453,30 @@ def generate_maps_by_geres():
     climates=list(payload.get("selected_climates") or [])
     results={}
     errors={}
-    if mode=="gwr" and len(years)!=1:
-        return jsonify({"ok":False,"error":"GWR por GERES exige exatamente um ano analítico"}),422
-    for geres_name in GERES_MUNICIPALITIES:
-        scoped={**payload,"geres":geres_name}
-        try:
-            if mode=="gwr":
-                year=years[0]
-                climate_keys={_normalize_token(v) for v in climates}
-                mapping={"temperatura":"temperatura_media_c","precipitacao":"precipitacao_anual_mm"}
-                predictors=[mapping[k] for k in ("temperatura","precipitacao") if k in climate_keys]
-                if not predictors: raise ValueError("Selecione Temperatura e/ou Precipitação")
-                panel,meta=_build_runtime_gwr_panel(disease_key,year,predictors)
+    if mode=="gwr":
+        if len(years)!=1:
+            return jsonify({"ok":False,"error":"GWR por GERES exige exatamente um ano analítico"}),422
+        climate_keys={_normalize_token(v) for v in climates}
+        mapping={"temperatura":"temperatura_media_c","precipitacao":"precipitacao_anual_mm"}
+        predictors=[mapping[k] for k in ("temperatura","precipitacao") if k in climate_keys]
+        product=_load_persisted_gwr_product(disease_key,years[0],predictors)
+        if not product:
+            return jsonify({"ok":False,"status":"preparing_required",
+                            "error":"Produto GWR estadual ainda não pré-calculado"}),409
+        # One fitted statewide GWR is scientifically reused for all GERES.
+        # Territorial products are cheap GeoJSON filters, never twelve refits.
+        for geres_name in GERES_MUNICIPALITIES:
+            try:
                 codes=_geres_codes(geres_name)
-                runtime=Path(__file__).parent/"static"/"maps"/"runtime_gwr"; runtime.mkdir(parents=True,exist_ok=True)
-                panel_path=runtime/f"painel_{_normalize_token(disease_key)}_{year}_{'_'.join(predictors)}.csv"
-                panel.to_csv(panel_path,index=False)
-                from scripts.generate_epidemiological_gwr_maps import generate_epidemiological_gwr_maps
-                gwr=generate_epidemiological_gwr_maps(panel_path,DEFAULT_PERNAMBUCO_CARTOGRAPHY,"desfecho",predictors,
-                    output_dir=runtime,analysis_year=year,display_ibge_codes=codes,save_joined_geodata=False,
-                    title_prefix=f"EpiGeoData | GWR {disease_key} | {geres_name}")
-                root=Path(__file__).parent/"static"
-                results[geres_name]={"maps":{k:"/static/"+p.relative_to(root).as_posix() for k,p in gwr.map_paths.items()},
-                                     "bandwidth":gwr.gwr_bandwidth,"records_used":gwr.records_used,
-                                     "records_displayed":sum(str(x) in codes for x in panel["municipio_ibge"])}
+                results[geres_name]={"joined_geojson":_scope_geojson_from_persisted(product,codes),
+                    "bandwidth":product.get("bandwidth"),"records_used":product.get("records_used"),
+                    "records_displayed":len(codes or [])}
+            except Exception as exc: errors[geres_name]=str(exc)
+        return jsonify({"ok":bool(results),"analysis_mode":"gwr","disease_key":disease_key,
+                        "selected_years":years,"selected_climates":climates,
+                        "maps_by_geres":results,"errors":errors,
+                        "generated":len(results),"requested":len(GERES_MUNICIPALITIES),
+                        "persisted":True}),200 if results else 422
             else:
                 from scripts.generate_choropleth_brazil import generate_professional_choropleth
                 result=generate_professional_choropleth(disease_key=disease_key,analysis_mode=mode,
