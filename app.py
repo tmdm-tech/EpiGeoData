@@ -1306,6 +1306,48 @@ def _disease_year_by_ibge(disease_key: str, year: int) -> tuple[dict[str,float],
     return values,str(csv_path)
 
 
+def _runtime_gwr_dir() -> Path:
+    path=Path(__file__).parent/"static"/"maps"/"runtime_gwr"
+    path.mkdir(parents=True,exist_ok=True)
+    return path
+
+def _gwr_panel_path(disease_key: str, year: int, predictors: list[str]) -> Path:
+    return _runtime_gwr_dir()/f"painel_{_normalize_token(disease_key)}_{int(year)}_{'_'.join(predictors)}.csv"
+
+def _gwr_manifest_path(disease_key: str, year: int, predictors: list[str]) -> Path:
+    return _runtime_gwr_dir()/f"manifest_{_normalize_token(disease_key)}_{int(year)}_{'_'.join(predictors)}.json"
+
+def _load_persisted_gwr_product(disease_key: str, year: int, predictors: list[str]) -> dict | None:
+    manifest=_gwr_manifest_path(disease_key,year,predictors)
+    if not manifest.exists(): return None
+    try:
+        payload=json.loads(manifest.read_text(encoding="utf-8"))
+        root=Path(__file__).parent
+        required=[payload.get("joined_geojson_file"),*(payload.get("map_files") or {}).values()]
+        if not required or any(not rel or not (root/rel).exists() for rel in required): return None
+        return payload
+    except (OSError,ValueError,TypeError,json.JSONDecodeError):
+        return None
+
+def _scope_geojson_from_persisted(product: dict, display_ibge_codes: set[str] | None) -> str | None:
+    rel=product.get("joined_geojson_file")
+    if not rel: return None
+    source=Path(__file__).parent/rel
+    if display_ibge_codes is None:
+        return "/static/"+source.relative_to(Path(__file__).parent/"static").as_posix()
+    wanted={str(x).replace(".0","") for x in display_ibge_codes}
+    import hashlib
+    digest=hashlib.sha1(",".join(sorted(wanted)).encode("utf-8")).hexdigest()[:10]
+    target=_runtime_gwr_dir()/f"{source.stem}_scope_{digest}.geojson"
+    if not target.exists():
+        geo=gpd.read_file(source)
+        code_col="_ibge_code" if "_ibge_code" in geo.columns else ("code_muni" if "code_muni" in geo.columns else None)
+        if code_col is None: raise ValueError("Resultado GWR persistido sem código IBGE")
+        scoped=geo[geo[code_col].astype(str).str.replace(".0","",regex=False).isin(wanted)].copy()
+        if scoped.empty: raise ValueError("Recorte territorial sem municípios ajustados")
+        scoped.to_file(target,driver="GeoJSON")
+    return "/static/"+target.relative_to(Path(__file__).parent/"static").as_posix()
+
 def _build_runtime_gwr_panel(disease_key: str, year: int, predictors: list[str]) -> tuple[pd.DataFrame,dict]:
     from scripts.generate_choropleth_brazil import load_pernambuco_municipalities, normalize_text
     allowed={"temperatura_media_c","precipitacao_anual_mm"}
