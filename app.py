@@ -1307,7 +1307,10 @@ def _disease_year_by_ibge(disease_key: str, year: int) -> tuple[dict[str,float],
 
 
 def _runtime_gwr_dir() -> Path:
-    path=Path(__file__).parent/"static"/"maps"/"runtime_gwr"
+    # Render persistent disk can be mounted at EPIGEODATA_GWR_STORE.
+    # Local/dev falls back to the repository runtime directory.
+    configured=os.environ.get("EPIGEODATA_GWR_STORE","").strip()
+    path=Path(configured) if configured else Path(__file__).parent/"static"/"maps"/"runtime_gwr"
     path.mkdir(parents=True,exist_ok=True)
     return path
 
