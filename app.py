@@ -114,6 +114,34 @@ DISEASE_FILE_ALIASES = {
     for key, meta in DISEASE_CATALOG.items()
 }
 
+GERES_MUNICIPALITIES = {
+    "I GERES": ["Abreu e Lima","Araçoiaba","Cabo de Santo Agostinho","Camaragibe","Chã de Alegria","Chã Grande","Fernando de Noronha","Glória do Goitá","Igarassu","Ilha de Itamaracá","Ipojuca","Itapissuma","Jaboatão dos Guararapes","Moreno","Olinda","Paulista","Pombos","Recife","São Lourenço da Mata","Vitória de Santo Antão"],
+    "II GERES": ["Bom Jardim","Buenos Aires","Carpina","Casinhas","Cumaru","Feira Nova","João Alfredo","Lagoa de Itaenga","Lagoa do Carro","Limoeiro","Machados","Nazaré da Mata","Orobó","Passira","Paudalho","Salgadinho","Surubim","Tracunhaém","Vertente do Lério","Vicência"],
+    "III GERES": ["Água Preta","Amaraji","Barreiros","Belém de Maria","Catende","Cortês","Escada","Gameleira","Jaqueira","Joaquim Nabuco","Lagoa dos Gatos","Maraial","Palmares","Primavera","Quipapá","Ribeirão","Rio Formoso","São Benedito do Sul","São José da Coroa Grande","Sirinhaém","Tamandaré","Xexéu"],
+    "IV GERES": ["Agrestina","Alagoinha","Altinho","Barra de Guabiraba","Belo Jardim","Bezerros","Bonito","Brejo da Madre de Deus","Cachoeirinha","Camocim de São Félix","Caruaru","Cupira","Frei Miguelinho","Gravatá","Ibirajuba","Jataúba","Jurema","Panelas","Pesqueira","Poção","Riacho das Almas","Sairé","Sanharó","Santa Cruz do Capibaribe","Santa Maria do Cambucá","São Bento do Una","São Caetano","São Joaquim do Monte","Tacaimbó","Taquaritinga do Norte","Toritama","Vertentes"],
+    "V GERES": ["Águas Belas","Angelim","Bom Conselho","Brejão","Caetés","Calçado","Canhotinho","Capoeiras","Correntes","Garanhuns","Iati","Itaíba","Jucati","Jupi","Lagoa do Ouro","Lajedo","Palmeirina","Paranatama","Saloá","São João","Terezinha"],
+    "VI GERES": ["Arcoverde","Buíque","Custódia","Ibimirim","Inajá","Jatobá","Manari","Pedra","Petrolândia","Sertânia","Tacaratu","Tupanatinga","Venturosa"],
+    "VII GERES": ["Belém do São Francisco","Cedro","Mirandiba","Salgueiro","Serrita","Terra Nova","Verdejante"],
+    "VIII GERES": ["Afrânio","Cabrobó","Dormentes","Lagoa Grande","Orocó","Petrolina","Santa Maria da Boa Vista"],
+    "IX GERES": ["Araripina","Bodocó","Exu","Granito","Ipubi","Moreilândia","Ouricuri","Parnamirim","Santa Cruz","Santa Filomena","Trindade"],
+    "X GERES": ["Afogados da Ingazeira","Brejinho","Carnaíba","Iguaracy","Ingazeira","Itapetim","Quixaba","Santa Terezinha","São José do Egito","Solidão","Tabira","Tuparetama"],
+    "XI GERES": ["Betânia","Calumbi","Carnaubeira da Penha","Flores","Floresta","Itacuruba","Santa Cruz da Baixa Verde","São José do Belmonte","Serra Talhada","Triunfo"],
+    "XII GERES": ["Aliança","Camutanga","Condado","Ferreiros","Goiana","Itambé","Itaquitinga","Macaparana","São Vicente Férrer","Timbaúba"],
+}
+
+def _geres_codes(geres: str) -> set[str] | None:
+    key=str(geres or "ALL").strip().upper()
+    if key in ("","ALL","TODAS AS GERES"): return None
+    members=GERES_MUNICIPALITIES.get(key)
+    if not members: raise ValueError(f"GERES desconhecida: {geres}")
+    from scripts.generate_choropleth_brazil import load_pernambuco_municipalities, normalize_text
+    gdf=load_pernambuco_municipalities()[["codigo_ibge","name_muni"]].copy()
+    wanted={normalize_text(x) for x in members}
+    codes=set(gdf[gdf["name_muni"].map(normalize_text).isin(wanted)]["codigo_ibge"].astype(str).str.replace(".0","",regex=False))
+    if not codes: raise ValueError(f"GERES sem correspondência na malha IBGE: {geres}")
+    return codes
+
+
 DATASUS_CATALOG_CACHE: dict[str, tuple[float, dict]] = {}
 DATASUS_CATALOG_TTL_SECONDS = 6 * 60 * 60
 
