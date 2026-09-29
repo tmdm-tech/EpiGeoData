@@ -2408,81 +2408,117 @@
         ].join("|");
       }
 
-      async function generateProfessionalOverlayMap(title) {
+      async function generateProfessionalOverlayMap(title, expectedSerial = realtimeRefreshSerial) {
         const diseaseKey = resolveDiseaseApiKey(selectedDisease.name);
+        const currentMode = analysisModeSelect?.value || selectedDemoMode || "choropleth";
+        const requestSignature = currentProfessionalMapSignature();
+        const requestBody = {
+          disease_key: diseaseKey,
+          title,
+          analysis_mode: currentMode,
+          selected_years: Array.from(selectedYears).map(Number).filter(Number.isFinite).sort((a,b)=>a-b),
+          selected_climates: Array.from(selectedClimates).map((label) => climateApiKeyByName[label]).filter(Boolean),
+          socio_variable: selectedSocioVariable,
+          socio_scope: selectedSocioScope,
+          geres: activeGeres,
+          municipio_id: municipioSelect?.value || ""
+        };
+
+        if (professionalMapAbortController) professionalMapAbortController.abort();
+        const controller = new AbortController();
+        professionalMapAbortController = controller;
 
         try {
-          const currentMode = analysisModeSelect?.value || selectedDemoMode || "choropleth";
-          const requestBody = {
-              disease_key: diseaseKey,
-              title,
-              analysis_mode: analysisModeSelect?.value || selectedDemoMode || "choropleth",
-              selected_years: Array.from(selectedYears).map(Number).filter(Number.isFinite).sort((a,b)=>a-b),
-              selected_climates: Array.from(selectedClimates).map((label) => climateApiKeyByName[label]).filter(Boolean),
-              socio_variable: selectedSocioVariable,
-              socio_scope: selectedSocioScope,
-              geres: activeGeres,
-              municipio_id: municipioSelect?.value || ""
-            };
           const endpoint = currentMode === "gwr" ? "/api/maps/gwr-runtime" : "/api/maps/professional-overlay";
           const response = await fetch(endpoint, {
-            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal
           });
           const payload = await response.json();
+          if (expectedSerial !== realtimeRefreshSerial || requestSignature !== currentProfessionalMapSignature()) return;
           if (!response.ok) {
-            throw new Error(payload?.details || payload?.error || "Falha ao gerar mapa profissional");
+            const detail = payload?.details || payload?.error || "Falha ao gerar mapa profissional";
+            throw new Error(detail);
           }
+
           if (currentMode === "gwr") {
             const gwrUrl = payload?.maps?.gwr_local_r2 || Object.values(payload?.maps || {})[0];
             if (!gwrUrl) throw new Error("GWR validado sem mapa retornado");
             lastProfessionalMapUrl = gwrUrl;
-            lastProfessionalMapSignature = currentProfessionalMapSignature();
+            lastProfessionalMapSignature = requestSignature;
             professionalMapPreview.src = gwrUrl;
             professionalMapPreview.classList.add("visible");
             professionalMapStatus.innerHTML =
-              "<strong>GWR validado:</strong> " + payload.records_used + " municípios | bandwidth " +
-              Number(payload.bandwidth).toFixed(2) + " | " + payload.methodology;
+              "<strong>GWR validado:</strong> " + payload.records_used + " municípios no ajuste | " +
+              payload.records_displayed + " exibidos | bandwidth " + Number(payload.bandwidth).toFixed(2) +
+              " | " + payload.methodology;
             return;
           }
-          if (!payload || !payload.image_url) throw new Error("Resposta sem URL de mapa");
+
+          if (!payload?.image_url) throw new Error("Resposta sem URL de mapa");
           lastProfessionalMapUrl = payload.image_url;
-          lastProfessionalMapSignature = currentProfessionalMapSignature();
+          lastProfessionalMapSignature = requestSignature;
           professionalMapPreview.src = payload.image_url;
           professionalMapPreview.classList.add("visible");
-          professionalMapStatus.innerHTML = payload.has_local_data
-            ? "<strong>Cartografia:</strong> mapa epidemiológico científico gerado no backend"
-            : "<strong>Cartografia:</strong> mapa científico gerado sem série municipal local; layout mantido para consulta DATASUS";
-          return;
-        } catch (_) {
-          // fallback para sobreposição preparada apenas se o mapa principal falhar
-        }
-
-        try {
-          const preparedResponse = await fetch("/api/maps/prepared-heatmap-overlay", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ input_file: preparedHeatmapInputName })
-          });
-
-          if (!preparedResponse.ok) {
-            throw new Error("Falha ao gerar sobreposição preparada");
-          }
-
-          const preparedPayload = await preparedResponse.json();
-          const combinedMap = preparedPayload?.maps?.combined;
-          if (!combinedMap) {
-            throw new Error("Resposta sem mapa combinado da sobreposição");
-          }
-
-          lastProfessionalMapUrl = combinedMap;
-          professionalMapPreview.src = combinedMap;
-          professionalMapPreview.classList.add("visible");
           professionalMapStatus.innerHTML =
-            "<strong>Cartografia:</strong> fallback de sobreposição preparado usado após falha no mapa epidemiológico";
-        } catch (_) {
-          lastProfessionalMapUrl = "";
-          professionalMapPreview.classList.remove("visible");
-          professionalMapStatus.innerHTML = "<strong>Cartografia:</strong> falha ao gerar mapa no backend";
+            "<strong>Cartografia:</strong> " + describeMode(currentMode) +
+            (payload.has_local_data ? " científico gerado no backend" : " sem série municipal local");
+        } catch (error) {
+          if (error?.name === "AbortError") throw error;
+          if (expectedSerial !== realtimeRefreshSerial || requestSignature !== currentProfessionalMapSignature()) return;
+
+          // A GWR scientific gate must remain explicit: never replace a rejected
+          // GWR with a prepared heatmap that represents another methodology.
+          if (currentMode === "gwr") {
+            lastProfessionalMapUrl = "";
+            lastProfessionalMapSignature = "";
+            professionalMapPreview.removeAttribute("src");
+            professionalMapPreview.classList.remove("visible");
+            professionalMapStatus.innerHTML =
+              "<strong>GWR bloqueado:</strong> " + String(error.message || error);
+            return;
+          }
+
+          // Prepared heatmap is a visual fallback only for compatible non-GWR
+          // display modes. It is never labelled as the requested scientific method.
+          if (!["heat", "overlay"].includes(currentMode)) {
+            lastProfessionalMapUrl = "";
+            professionalMapPreview.classList.remove("visible");
+            professionalMapStatus.innerHTML =
+              "<strong>Cartografia:</strong> falha em " + describeMode(currentMode) + " — " + String(error.message || error);
+            return;
+          }
+
+          try {
+            const preparedResponse = await fetch("/api/maps/prepared-heatmap-overlay", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ input_file: preparedHeatmapInputName }),
+              signal: controller.signal
+            });
+            if (!preparedResponse.ok) throw new Error("Falha ao gerar sobreposição preparada");
+            const preparedPayload = await preparedResponse.json();
+            if (expectedSerial !== realtimeRefreshSerial || requestSignature !== currentProfessionalMapSignature()) return;
+            const combinedMap = preparedPayload?.maps?.combined;
+            if (!combinedMap) throw new Error("Resposta sem mapa combinado da sobreposição");
+            lastProfessionalMapUrl = combinedMap;
+            lastProfessionalMapSignature = requestSignature;
+            professionalMapPreview.src = combinedMap;
+            professionalMapPreview.classList.add("visible");
+            professionalMapStatus.innerHTML =
+              "<strong>Cartografia:</strong> visualização preparada de contingência (não substitui " +
+              describeMode(currentMode) + ")";
+          } catch (fallbackError) {
+            if (fallbackError?.name === "AbortError") throw fallbackError;
+            lastProfessionalMapUrl = "";
+            professionalMapPreview.classList.remove("visible");
+            professionalMapStatus.innerHTML =
+              "<strong>Cartografia:</strong> falha ao gerar " + describeMode(currentMode);
+          }
+        } finally {
+          if (professionalMapAbortController === controller) professionalMapAbortController = null;
         }
       }
 
@@ -3724,20 +3760,35 @@
 
       let realtimeRefreshTimer = null;
       let realtimeRefreshSerial = 0;
+      let professionalMapAbortController = null;
+      function invalidateScientificProduct(reason = "seleção atualizada") {
+        lastProfessionalMapUrl = "";
+        lastProfessionalMapSignature = "";
+        professionalMapPreview.removeAttribute("src");
+        professionalMapPreview.classList.remove("visible");
+        professionalMapStatus.innerHTML =
+          "<strong>Cartografia:</strong> recalculando " + describeMode(selectedDemoMode) + " — " + reason;
+        if (professionalMapAbortController) {
+          professionalMapAbortController.abort();
+          professionalMapAbortController = null;
+        }
+      }
       function scheduleRealtimeScientificRefresh(reason = "seleção atualizada") {
         const serial = ++realtimeRefreshSerial;
-        lastProfessionalMapSignature = "";
+        invalidateScientificProduct(reason);
         if (realtimeRefreshTimer) clearTimeout(realtimeRefreshTimer);
         realtimeRefreshTimer = setTimeout(async () => {
           if (serial !== realtimeRefreshSerial) return;
           try {
             if (selectedClimates.size > 0) await generateOverlay({ skipProfessional: true });
             if (serial !== realtimeRefreshSerial) return;
-            if (!options.skipProfessional) await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
+            await generateProfessionalOverlayMap(institutionalProfessionalMapTitle, serial);
           } catch (error) {
-            console.error("Falha na atualização científica em tempo real", error);
+            if (error?.name !== "AbortError") {
+              console.error("Falha na atualização científica em tempo real", error);
+            }
           }
-        }, 180);
+        }, 220);
       }
 
       async function autoGenerateIfReady() {
