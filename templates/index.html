@@ -1535,7 +1535,18 @@
       const selectionStatusList = document.getElementById("selectionStatusList");
       const baseMapSelect=document.getElementById("baseMapSelect"),activeLayerList=document.getElementById("activeLayerList"),layerOpacity=document.getElementById("layerOpacity"),layerColor=document.getElementById("layerColor");
       let baseTileLayer=null;
-      function styleVisibleLayers(){[estadoLayer,geresLayer,municipioLayer].filter(Boolean).forEach(layer=>{if(layer.setStyle)layer.setStyle({fillOpacity:Number(layerOpacity.value)/100,fillColor:layerColor.value});});}
+      function styleVisibleLayers(){
+        const opacity=Number(layerOpacity.value)/100;
+        const color=layerColor.value;
+        const style={fillOpacity:opacity,fillColor:color,color:color};
+        const apply=(layer)=>{
+          if(!layer)return;
+          if(typeof layer.setStyle==="function") layer.setStyle(style);
+          if(typeof layer.eachLayer==="function") layer.eachLayer(apply);
+        };
+        [estadoLayer,geresLayerGroup,municipioLayer,overlayLayer,climateOverlayLayer,gwrMarkerLayer].forEach(apply);
+        if(demoCanvas) refreshDemonstratorFromSelection("estilo do mapa atualizado");
+      }
       function refreshLayerPanel(){if(!activeLayerList)return;const rows=[];if(estadoLayer)rows.push("Limite estadual");if(geresLayer)rows.push("GERES selecionada");if(municipioLayer)rows.push("Município selecionado");if(selectedClimates.size)rows.push(...Array.from(selectedClimates).map(x=>"Clima: "+x));rows.push("Agravo: "+selectedDisease.name);activeLayerList.innerHTML=rows.map((x,i)=>'<div class="layer-row"><span>'+(i+1)+'</span><span>'+x+'</span><span>ativo</span></div>').join("");}
 
 
@@ -1546,7 +1557,7 @@
         "I GERES": ["Abreu e Lima", "Araçoiaba", "Cabo de Santo Agostinho", "Camaragibe", "Chã de Alegria", "Chã Grande", "Fernando de Noronha", "Glória do Goitá", "Igarassu", "Ilha de Itamaracá", "Ipojuca", "Itapissuma", "Jaboatão dos Guararapes", "Moreno", "Olinda", "Paulista", "Pombos", "Recife", "São Lourenço da Mata", "Vitória de Santo Antão"],
         "II GERES": ["Bom Jardim", "Buenos Aires", "Carpina", "Casinhas", "Cumaru", "Feira Nova", "João Alfredo", "Lagoa de Itaenga", "Lagoa do Carro", "Limoeiro", "Machados", "Nazaré da Mata", "Orobó", "Passira", "Paudalho", "Salgadinho", "Surubim", "Tracunhaém", "Vertente do Lério", "Vicência"],
         "III GERES": ["Água Preta", "Amaraji", "Barreiros", "Belém de Maria", "Catende", "Cortês", "Escada", "Gameleira", "Jaqueira", "Joaquim Nabuco", "Lagoa dos Gatos", "Maraial", "Palmares", "Primavera", "Quipapá", "Ribeirão", "Rio Formoso", "São Benedito do Sul", "São José da Coroa Grande", "Sirinhaém", "Tamandaré", "Xexéu"],
-        "IV GERES": ["Agrestina", "Alagoinha", "Altinho", "Barra de Guabiraba", "Belo Jardim", "Bezerros", "Bonito", "Brejo da Madre de Deus", "Cachoeirinha", "Camocim de São Félix", "Caruaru", "Cupira", "Frei Miguelinho", "Gravatá", "Ibirajuba", "Jataúba", "Jurema", "Panelas", "Pesqueira", "Poção", "Riacho das Almas", "Sairé", "Sanharó", "Santa Cruz do Capibaribe", "Santa Maria do Cambucá", "São Bento do Una", "São Caetano", "São Joaquim do Monte", "Tacaimbó", "Taquaritinga do Norte", "Toritama", "Vertentes"],
+        "IV GERES": ["Agrestina", "Alagoinha", "Altinho", "Barra de Guabiraba", "Belo Jardim", "Bezerros", "Bonito", "Brejo da Madre de Deus", "Cachoeirinha", "Camocim de São Félix", "Caruaru", "Cupira", "Frei Miguelinho", "Gravatá", "Ibirajuba", "Jataúba", "Jurema", "Panelas", "Pesqueira", "Poção", "Riacho das Almas", "Sairé", "Sanharó", "Santa Cruz do Capibaribe", "Santa Maria do Cambucá", "São Bento do Una", "São Caitano", "São Joaquim do Monte", "Tacaimbó", "Taquaritinga do Norte", "Toritama", "Vertentes"],
         "V GERES": ["Águas Belas", "Angelim", "Bom Conselho", "Brejão", "Caetés", "Calçado", "Canhotinho", "Capoeiras", "Correntes", "Garanhuns", "Iati", "Itaíba", "Jucati", "Jupi", "Lagoa do Ouro", "Lajedo", "Palmeirina", "Paranatama", "Saloá", "São João", "Terezinha"],
         "VI GERES": ["Arcoverde", "Buíque", "Custódia", "Ibimirim", "Inajá", "Jatobá", "Manari", "Pedra", "Petrolândia", "Sertânia", "Tacaratu", "Tupanatinga", "Venturosa"],
         "VII GERES": ["Belém do São Francisco", "Cedro", "Mirandiba", "Salgueiro", "Serrita", "Terra Nova", "Verdejante"],
