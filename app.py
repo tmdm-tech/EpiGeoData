@@ -1332,12 +1332,27 @@ def _load_persisted_gwr_product(disease_key: str, year: int, predictors: list[st
     except (OSError,ValueError,TypeError,json.JSONDecodeError):
         return None
 
+def _publish_runtime_artifact(path: Path) -> Path:
+    """Expose persistent artifacts under Flask static without recomputation."""
+    static_runtime=Path(__file__).parent/"static"/"maps"/"runtime_gwr"
+    static_runtime.mkdir(parents=True,exist_ok=True)
+    try:
+        path.relative_to(Path(__file__).parent/"static")
+        return path
+    except ValueError:
+        import shutil
+        target=static_runtime/path.name
+        if not target.exists() or target.stat().st_mtime_ns != path.stat().st_mtime_ns:
+            shutil.copy2(path,target)
+        return target
+
 def _scope_geojson_from_persisted(product: dict, display_ibge_codes: set[str] | None) -> str | None:
     rel=product.get("joined_geojson_file")
     if not rel: return None
     source=Path(__file__).parent/rel
     if display_ibge_codes is None:
-        return "/static/"+source.relative_to(Path(__file__).parent/"static").as_posix()
+        published=_publish_runtime_artifact(source)
+        return "/static/"+published.relative_to(Path(__file__).parent/"static").as_posix()
     wanted={str(x).replace(".0","") for x in display_ibge_codes}
     import hashlib
     digest=hashlib.sha1(",".join(sorted(wanted)).encode("utf-8")).hexdigest()[:10]
@@ -1349,7 +1364,8 @@ def _scope_geojson_from_persisted(product: dict, display_ibge_codes: set[str] | 
         scoped=geo[geo[code_col].astype(str).str.replace(".0","",regex=False).isin(wanted)].copy()
         if scoped.empty: raise ValueError("Recorte territorial sem municípios ajustados")
         scoped.to_file(target,driver="GeoJSON")
-    return "/static/"+target.relative_to(Path(__file__).parent/"static").as_posix()
+    published=_publish_runtime_artifact(target)
+    return "/static/"+published.relative_to(Path(__file__).parent/"static").as_posix()
 
 def _build_runtime_gwr_panel(disease_key: str, year: int, predictors: list[str]) -> tuple[pd.DataFrame,dict]:
     from scripts.generate_choropleth_brazil import load_pernambuco_municipalities, normalize_text
@@ -1432,7 +1448,10 @@ def generate_runtime_gwr():
         display_codes={municipio_id}; display_scope=f"Município IBGE {municipio_id}"
 
     root=Path(__file__).parent
-    maps={k:"/static/"+(root/rel).relative_to(root/"static").as_posix() for k,rel in (product.get("map_files") or {}).items()}
+    maps={}
+    for k,rel in (product.get("map_files") or {}).items():
+        published=_publish_runtime_artifact(root/rel)
+        maps[k]="/static/"+published.relative_to(root/"static").as_posix()
     try:
         joined_url=_scope_geojson_from_persisted(product,display_codes)
     except Exception as exc:
