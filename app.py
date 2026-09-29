@@ -1325,9 +1325,8 @@ def _load_persisted_gwr_product(disease_key: str, year: int, predictors: list[st
     if not manifest.exists(): return None
     try:
         payload=json.loads(manifest.read_text(encoding="utf-8"))
-        root=Path(__file__).parent
         required=[payload.get("joined_geojson_file"),*(payload.get("map_files") or {}).values()]
-        if not required or any(not rel or not (root/rel).exists() for rel in required): return None
+        if not required or any(not rel or not Path(rel).exists() for rel in required): return None
         return payload
     except (OSError,ValueError,TypeError,json.JSONDecodeError):
         return None
@@ -1349,7 +1348,7 @@ def _publish_runtime_artifact(path: Path) -> Path:
 def _scope_geojson_from_persisted(product: dict, display_ibge_codes: set[str] | None) -> str | None:
     rel=product.get("joined_geojson_file")
     if not rel: return None
-    source=Path(__file__).parent/rel
+    source=Path(rel)
     if display_ibge_codes is None:
         published=_publish_runtime_artifact(source)
         return "/static/"+published.relative_to(Path(__file__).parent/"static").as_posix()
@@ -1450,7 +1449,7 @@ def generate_runtime_gwr():
     root=Path(__file__).parent
     maps={}
     for k,rel in (product.get("map_files") or {}).items():
-        published=_publish_runtime_artifact(root/rel)
+        published=_publish_runtime_artifact(Path(rel))
         maps[k]="/static/"+published.relative_to(root/"static").as_posix()
     try:
         joined_url=_scope_geojson_from_persisted(product,display_codes)
