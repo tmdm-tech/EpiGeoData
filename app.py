@@ -1402,6 +1402,53 @@ def generate_runtime_gwr():
         return jsonify({"ok":False,"error":"GWR não autorizado para esta seleção","details":str(exc)}),422
 
 
+@app.post("/api/maps/by-geres")
+def generate_maps_by_geres():
+    """Generate one scientific territorial map for every GERES from the active selection."""
+    payload=request.get_json(silent=True) or {}
+    disease_key=str(payload.get("disease_key","tuberculose")).strip()
+    mode=_normalize_token(str(payload.get("analysis_mode","choropleth")))
+    years=sorted({int(y) for y in (payload.get("selected_years") or []) if str(y).isdigit()})
+    climates=list(payload.get("selected_climates") or [])
+    results={}
+    errors={}
+    if mode=="gwr" and len(years)!=1:
+        return jsonify({"ok":False,"error":"GWR por GERES exige exatamente um ano analítico"}),422
+    for geres_name in GERES_MUNICIPALITIES:
+        scoped={**payload,"geres":geres_name}
+        try:
+            if mode=="gwr":
+                year=years[0]
+                climate_keys={_normalize_token(v) for v in climates}
+                mapping={"temperatura":"temperatura_media_c","precipitacao":"precipitacao_anual_mm"}
+                predictors=[mapping[k] for k in ("temperatura","precipitacao") if k in climate_keys]
+                if not predictors: raise ValueError("Selecione Temperatura e/ou Precipitação")
+                panel,meta=_build_runtime_gwr_panel(disease_key,year,predictors)
+                codes=_geres_codes(geres_name)
+                runtime=Path(__file__).parent/"static"/"maps"/"runtime_gwr"; runtime.mkdir(parents=True,exist_ok=True)
+                panel_path=runtime/f"painel_{_normalize_token(disease_key)}_{year}_{'_'.join(predictors)}.csv"
+                panel.to_csv(panel_path,index=False)
+                from scripts.generate_epidemiological_gwr_maps import generate_epidemiological_gwr_maps
+                gwr=generate_epidemiological_gwr_maps(panel_path,DEFAULT_PERNAMBUCO_CARTOGRAPHY,"desfecho",predictors,
+                    output_dir=runtime,analysis_year=year,display_ibge_codes=codes,save_joined_geodata=False,
+                    title_prefix=f"EpiGeoData | GWR {disease_key} | {geres_name}")
+                root=Path(__file__).parent/"static"
+                results[geres_name]={"maps":{k:"/static/"+p.relative_to(root).as_posix() for k,p in gwr.map_paths.items()},
+                                     "bandwidth":gwr.gwr_bandwidth,"records_used":gwr.records_used,
+                                     "records_displayed":sum(str(x) in codes for x in panel["municipio_ibge"])}
+            else:
+                from scripts.generate_choropleth_brazil import generate_professional_choropleth
+                result=generate_professional_choropleth(disease_key=disease_key,analysis_mode=mode,
+                    selected_years=years,selected_climates=climates,geres=geres_name,dpi=300)
+                results[geres_name]={"image_url":f"/static/maps/{result.output_file.name}","variable":result.variable_label}
+        except Exception as exc:
+            errors[geres_name]=str(exc)
+    status=200 if results else 422
+    return jsonify({"ok":bool(results),"analysis_mode":mode,"disease_key":disease_key,
+                    "selected_years":years,"selected_climates":climates,"maps_by_geres":results,
+                    "errors":errors,"generated":len(results),"requested":len(GERES_MUNICIPALITIES)}),status
+
+
 @app.post("/api/maps/professional-overlay")
 def generate_professional_overlay_map() -> tuple[dict, int]:
     payload = request.get_json(silent=True) or {}
