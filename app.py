@@ -1367,28 +1367,7 @@ def generate_runtime_gwr():
         display_ibge_codes=None
         display_scope="Pernambuco"
         if geres and geres.upper() not in ("ALL","TODAS AS GERES"):
-            # GERES defines the cartographic window. The GWR itself is fitted on
-            # the complete statewide municipality-year panel to preserve support.
-            from scripts.generate_choropleth_brazil import load_pernambuco_municipalities, normalize_text
-            geres_members={
-              "I GERES":["Abreu e Lima","Araçoiaba","Cabo de Santo Agostinho","Camaragibe","Chã de Alegria","Chã Grande","Glória do Goitá","Igarassu","Ilha de Itamaracá","Ipojuca","Itapissuma","Jaboatão dos Guararapes","Moreno","Olinda","Paulista","Pombos","Recife","São Lourenço da Mata","Vitória de Santo Antão"],
-              "II GERES":["Bom Jardim","Buenos Aires","Carpina","Casinhas","Cumaru","Feira Nova","João Alfredo","Lagoa de Itaenga","Lagoa do Carro","Limoeiro","Machados","Nazaré da Mata","Orobó","Passira","Paudalho","Salgadinho","Surubim","Tracunhaém","Vertente do Lério","Vicência"],
-              "III GERES":["Água Preta","Amaraji","Barreiros","Belém de Maria","Catende","Cortês","Escada","Gameleira","Jaqueira","Joaquim Nabuco","Lagoa dos Gatos","Maraial","Palmares","Primavera","Quipapá","Ribeirão","Rio Formoso","São Benedito do Sul","São José da Coroa Grande","Sirinhaém","Tamandaré","Xexéu"],
-              "IV GERES":["Agrestina","Alagoinha","Altinho","Barra de Guabiraba","Belo Jardim","Bezerros","Bonito","Brejo da Madre de Deus","Cachoeirinha","Camocim de São Félix","Caruaru","Cupira","Frei Miguelinho","Gravatá","Ibirajuba","Jataúba","Jurema","Panelas","Pesqueira","Poção","Riacho das Almas","Sairé","Sanharó","Santa Cruz do Capibaribe","Santa Maria do Cambucá","São Bento do Una","São Caetano","São Joaquim do Monte","Tacaimbó","Taquaritinga do Norte","Toritama","Vertentes"],
-              "V GERES":["Águas Belas","Angelim","Bom Conselho","Brejão","Caetés","Calçado","Canhotinho","Capoeiras","Correntes","Garanhuns","Iati","Itaíba","Jucati","Jupi","Lagoa do Ouro","Lajedo","Palmeirina","Paranatama","Saloá","São João","Terezinha"],
-              "VI GERES":["Arcoverde","Buíque","Custódia","Ibimirim","Inajá","Jatobá","Manari","Pedra","Petrolândia","Sertânia","Tacaratu","Tupanatinga","Venturosa"],
-              "VII GERES":["Belém do São Francisco","Cedro","Mirandiba","Salgueiro","Serrita","Terra Nova","Verdejante"],
-              "VIII GERES":["Afrânio","Cabrobó","Dormentes","Lagoa Grande","Orocó","Petrolina","Santa Maria da Boa Vista"],
-              "IX GERES":["Araripina","Bodocó","Exu","Granito","Ipubi","Moreilândia","Ouricuri","Parnamirim","Santa Cruz","Santa Filomena","Trindade"],
-              "X GERES":["Afogados da Ingazeira","Brejinho","Carnaíba","Iguaracy","Ingazeira","Itapetim","Quixaba","Santa Terezinha","São José do Egito","Solidão","Tabira","Tuparetama"],
-              "XI GERES":["Betânia","Calumbi","Carnaubeira da Penha","Flores","Floresta","Itacuruba","Santa Cruz da Baixa Verde","São José do Belmonte","Serra Talhada","Triunfo"],
-              "XII GERES":["Aliança","Camutanga","Condado","Ferreiros","Goiana","Itambé","Itaquitinga","Macaparana","São Vicente Férrer","Timbaúba"]
-            }
-            members=geres_members.get(geres.upper())
-            if not members: raise ValueError(f"GERES desconhecida: {geres}")
-            gdf_names=load_pernambuco_municipalities()[["codigo_ibge","name_muni"]].copy()
-            allowed=set(gdf_names[gdf_names["name_muni"].map(normalize_text).isin({normalize_text(x) for x in members})]["codigo_ibge"].astype(str))
-            display_ibge_codes=allowed
+            display_ibge_codes=_geres_codes(geres)
             display_scope=geres.upper()
         if municipio_id:
             code=municipio_id.replace(".0","")
