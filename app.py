@@ -1339,9 +1339,19 @@ def _publish_runtime_artifact(path: Path) -> Path:
         path.relative_to(Path(__file__).parent/"static")
         return path
     except ValueError:
+        # Avoid copying large artifacts on every request. Symlink when the
+        # persistent store and app filesystem allow it; copy only as fallback.
         import shutil
         target=static_runtime/path.name
-        if not target.exists() or target.stat().st_mtime_ns != path.stat().st_mtime_ns:
+        if target.exists() or target.is_symlink():
+            try:
+                if target.is_symlink() and target.resolve()==path.resolve(): return target
+                if target.stat().st_mtime_ns==path.stat().st_mtime_ns: return target
+                target.unlink()
+            except OSError: pass
+        try:
+            target.symlink_to(path.resolve())
+        except OSError:
             shutil.copy2(path,target)
         return target
 
