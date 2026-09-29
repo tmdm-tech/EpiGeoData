@@ -25,6 +25,7 @@ app = Flask(__name__)
 REALTIME_CACHE: dict[str, tuple[float, dict]] = {}
 PROFESSIONAL_MAP_CACHE: dict[tuple, dict] = {}
 GWR_RUNTIME_CACHE: dict[tuple, dict] = {}
+PREPARED_HEATMAP_CACHE: dict[str, dict] = {}
 REALTIME_CACHE_TTL_SECONDS = 20 * 60
 DEFAULT_PROFESSIONAL_MAP_TITLE = "EpiGeoData | Mapa Coropletico Cientifico - Pernambuco"
 DEFAULT_PREPARED_HEATMAP_FILE = "municpios_pe"
@@ -1556,66 +1557,50 @@ def generate_prepared_heatmap_overlay() -> tuple[dict, int]:
     payload = request.get_json(silent=True) or {}
     requested_file = str(payload.get("input_file", DEFAULT_PREPARED_HEATMAP_FILE)).strip()
     prepared_file = _resolve_prepared_heatmap_file(requested_file)
-
     if not prepared_file:
-        return {
-            "error": "Arquivo preparado nao encontrado",
-            "requested": requested_file,
-            "expected_examples": [
-                "municpios_pe",
-                "municpios_pe.csv",
-                "municipios_pe.csv",
-                "municipios_pe.xlsx",
-            ],
-        }, 404
+        return {"error":"Arquivo preparado nao encontrado","requested":requested_file},404
 
-    prefix = f"overlay_preparado_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-    runtime_maps = Path(__file__).parent / "static" / "maps"
-    runtime_maps.mkdir(parents=True, exist_ok=True)
-    # Render has ephemeral constrained storage: retain only the newest generated
-    # products instead of accumulating every request forever.
-    generated = sorted(runtime_maps.glob("overlay_preparado_*.png"), key=lambda p: p.stat().st_mtime, reverse=True)
-    for stale in generated[9:]:
-        try:
-            stale.unlink()
-        except OSError:
-            pass
+    # This product depends only on the prepared input file. Generating three
+    # 300-dpi PNGs on every click made the UI unnecessarily CPU-bound.
+    stat=prepared_file.stat()
+    cache_key=f"{prepared_file.resolve()}:{stat.st_mtime_ns}:{stat.st_size}"
+    cached=PREPARED_HEATMAP_CACHE.get(cache_key)
+    if cached:
+        root=Path(__file__).parent/"static"
+        urls=list((cached.get("maps") or {}).values())
+        if urls and all((root/u.split("?",1)[0].removeprefix("/static/")).exists() for u in urls):
+            response=dict(cached); response["cache_hit"]=True
+            return jsonify(response),200
 
+    import hashlib
+    digest=hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:12]
+    prefix=f"overlay_preparado_{digest}"
+    runtime_maps=Path(__file__).parent/"static"/"maps"
+    runtime_maps.mkdir(parents=True,exist_ok=True)
+    expected={
+        "base":runtime_maps/f"{prefix}_base.png",
+        "marked":runtime_maps/f"{prefix}_marked.png",
+        "combined":runtime_maps/f"{prefix}_combined.png",
+    }
     try:
-        from scripts.generate_pernambuco_heatmap import generate_pernambuco_heatmaps
-
-        outputs = generate_pernambuco_heatmaps(
-            input_path=prepared_file,
-            output_dir=Path(__file__).parent / "static" / "maps",
-            prefix=prefix,
-            dpi=300,
-        )
-    except Exception as error:  # pragma: no cover - erro de runtime em ambiente
+        if not all(p.exists() for p in expected.values()):
+            from scripts.generate_pernambuco_heatmap import generate_pernambuco_heatmaps
+            outputs=generate_pernambuco_heatmaps(
+                input_path=prepared_file,output_dir=runtime_maps,prefix=prefix,dpi=300
+            )
+            expected={"base":outputs.base_map,"marked":outputs.marked_map,"combined":outputs.combined_map}
+    except Exception as error:
         app.logger.exception("prepared-heatmap-overlay failed")
-        return {
-            "error": "Falha ao gerar mapas da sobreposicao preparada",
-            "details": f"{type(error).__name__}: {error}",
-            "input_file": str(prepared_file.relative_to(Path(__file__).parent)),
-        }, 500
+        return {"error":"Falha ao gerar mapas da sobreposicao preparada","details":f"{type(error).__name__}: {error}"},500
 
-    static_root = Path(__file__).parent / "static"
-    ts = int(datetime.utcnow().timestamp())
-
-    def _to_static_url(path: Path) -> str:
-        relative = path.relative_to(static_root)
-        return f"/static/{relative.as_posix()}?v={ts}"
-
-    return jsonify(
-        {
-            "ok": True,
-            "input_file": str(prepared_file.relative_to(Path(__file__).parent)),
-            "maps": {
-                "base": _to_static_url(outputs.base_map),
-                "marked": _to_static_url(outputs.marked_map),
-                "combined": _to_static_url(outputs.combined_map),
-            },
-        }
-    ), 200
+    static_root=Path(__file__).parent/"static"
+    def url(path):
+        return "/static/"+path.relative_to(static_root).as_posix()
+    response={"ok":True,"input_file":str(prepared_file.relative_to(Path(__file__).parent)),
+              "maps":{k:url(v) for k,v in expected.items()},"cache_hit":False}
+    PREPARED_HEATMAP_CACHE.clear()
+    PREPARED_HEATMAP_CACHE[cache_key]=response
+    return jsonify(response),200
 
 
 @app.post("/api/maps/epidemiological-gwr")
