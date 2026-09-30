@@ -8,6 +8,7 @@ import re
 import sys
 import unicodedata
 import json
+import gzip
 from urllib.request import Request, urlopen
 from dataclasses import dataclass
 from functools import lru_cache
@@ -146,7 +147,10 @@ def load_pernambuco_municipalities() -> gpd.GeoDataFrame:
         req=Request("https://servicodados.ibge.gov.br/api/v1/localidades/estados/26/municipios",
                     headers={"User-Agent":"EpiGeoData/1.0 scientific-research","Accept-Encoding":"identity"})
         with urlopen(req,timeout=30) as response:
-            official=json.loads(response.read().decode("utf-8"))
+            raw=response.read()
+            if raw[:2] == b"\\x1f\\x8b":
+                raw=gzip.decompress(raw)
+            official=json.loads(raw.decode("utf-8"))
         official_by_name={normalize_text(item["nome"]):str(item["id"]) for item in official
                           if item.get("nome") and re.fullmatch(r"\d{7}",str(item.get("id","")))}
         missing=municipalities["codigo_ibge"].isna()
