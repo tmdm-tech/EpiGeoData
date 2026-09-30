@@ -1320,7 +1320,7 @@ def _disease_year_by_ibge(disease_key: str, year: int) -> tuple[dict[str,float],
         if raw in ("","-","...","nan"): continue
         try: value=float(raw)
         except ValueError: continue
-        label=re.sub(r"^\\d{6,7}\\s+","",str(row[name_col])).strip()
+        label=re.sub(r"^\d{6,7}\s+","",str(row[name_col])).strip()
         values[normalize_text(label)]=value
     return values,str(csv_path)
 
