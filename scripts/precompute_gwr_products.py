@@ -30,7 +30,7 @@ def prepare(disease: str, year: int, predictors: list[str], force: bool=False) -
     result=generate_epidemiological_gwr_maps(
         panel_path,validated_cartography,"desfecho",predictors,
         output_dir=webapp._runtime_gwr_dir(),analysis_year=year,
-        save_joined_geodata=True,dpi=300,
+        save_joined_geodata=True,dpi=300,render_maps=True,
         title_prefix=f"EpiGeoData | GWR {disease} x {' + '.join(predictors)}",
         render_maps=False,
     )
