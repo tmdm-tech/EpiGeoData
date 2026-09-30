@@ -4116,7 +4116,8 @@
                 resolve();
               })
               .catch((error) => {
-                setMapLoading("Nao foi possivel carregar o mapa. Tente novamente.", true);
+                setMapLoading("", false);
+                updateRobotMessage("O mapa-base nao carregou agora; os controles continuam disponíveis.");
                 reject(error);
               });
           };
@@ -4426,25 +4427,27 @@
         });
       }
 
+      // Bootstrap only the lightweight base map. Scientific products are never
+      // generated during page initialization.
       mapCard.addEventListener("mouseenter", scheduleMapBootstrap, { once: true });
       mapCard.addEventListener("touchstart", scheduleMapBootstrap, { once: true });
-      setTimeout(scheduleMapBootstrap, 80);
+      setTimeout(scheduleMapBootstrap, 250);
 
       fillGeresSelect();
       selectedYears.add(2026);
       renderYearButtons();
-      // Auto-seleciona Precipitacao como variável padrão inicial
-      selectedClimates.add("Precipitacao");
-      const defaultClimateBtn = document.querySelector('#climateButtons .chip[data-name="Precipitacao"]');
-      if (defaultClimateBtn) {
-        defaultClimateBtn.classList.add("active");
-      }
+      // Initial load is intentionally passive: no climate variable is selected
+      // and no scientific map/series request runs before explicit user action.
+      updateSelectionStatus();
+      refreshDemonstratorFromSelection("selecao inicial");
+      setMapLoading("", false);
 
-      loadDiseaseDataForSelection().finally(async () => {
-        updateSelectionStatus();
-        refreshDemonstratorFromSelection("selecao inicial");
-        await autoGenerateIfReady();
-      });
+      // Disease data is useful for later previews but must never block first paint.
+      setTimeout(() => {
+        loadDiseaseDataForSelection().then(() => {
+          updateSelectionStatus();
+        }).catch(() => {});
+      }, 1200);
     </script>
   </body>
 </html>
