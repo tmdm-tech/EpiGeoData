@@ -40,6 +40,7 @@ jobs:
     timeout-minutes: 45
     env:
       MPLBACKEND: Agg
+      EPIGEODATA_DISABLE_GWR_PREWARM: "1"
     steps:
       - uses: actions/checkout@v4
         with:
