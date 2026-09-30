@@ -3283,7 +3283,7 @@
         return labels[mode] || labels.overlay;
       }
 
-      function refreshDemonstratorFromSelection(reason = "selecao atualizada") {
+      function refreshDemonstratorFromSelection(reason = "selecao atualizada", options = {}) {
         const municipio = municipioSelect.options[municipioSelect.selectedIndex]?.text || "Todos os municipios";
         const years = Array.from(selectedYears).sort((a, b) => a - b);
         demoSelectionSummary.innerHTML =
@@ -3294,7 +3294,12 @@
           "<span><strong>GERES:</strong> " + (activeGeres === "ALL" ? "Todas as GERES" : activeGeres) + "</span>" +
           "<span><strong>Municipio:</strong> " + municipio + "</span>" +
           "<span><strong>Metodo:</strong> " + describeMode(selectedDemoMode) + "</span>";
-        professionalMapPreview.classList.add("visible");
+        if (!options.render) {
+          demoCanvas.style.display = "none";
+          professionalMapPreview.classList.remove("visible");
+          demoMeta.innerHTML = "<span><strong>Status:</strong> seleção pronta. Clique em Gerar mapa sobreposto para visualizar.</span>";
+          return;
+        }
         demoCanvas.style.display = "block";
         if (currentMapGeoJson || getCurrentBaseFeatureCollection()) {
           renderDemonstratorImage(reason, { mode: selectedDemoMode });
@@ -3861,7 +3866,9 @@
       }
 
       async function autoGenerateIfReady() {
-        if (selectedClimates.size > 0) scheduleRealtimeScientificRefresh("seleção atualizada");
+        // Deliberately passive. Scientific products are generated only by an
+        // explicit user action, never as a side effect of changing filters.
+        return;
       }
 
       async function generateOverlay(options = {}) {
@@ -3954,7 +3961,7 @@
             "<br/><small>Base em tempo real: pluviosidade, temperatura, cobertura vegetal, relevo e hidrografia + DATASUS.</small>"
         );
 
-        refreshDemonstratorFromSelection("mapa sobreposto atualizado");
+        refreshDemonstratorFromSelection("mapa sobreposto atualizado", { render: true });
         await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
       }
 
@@ -4203,7 +4210,6 @@
             renderYearButtons();
             updateSelectionStatus();
             refreshDemonstratorFromSelection("anos atualizados");
-            scheduleRealtimeScientificRefresh("anos atualizados");
           });
         });
       }
@@ -4215,7 +4221,6 @@
         renderYearButtons();
         updateSelectionStatus();
         refreshDemonstratorFromSelection("anos atualizados");
-        scheduleRealtimeScientificRefresh("anos atualizados");
       });
 
       clearYearsBtn.addEventListener("click", () => {
@@ -4223,7 +4228,6 @@
         renderYearButtons();
         updateSelectionStatus();
         refreshDemonstratorFromSelection("anos atualizados");
-        scheduleRealtimeScientificRefresh("anos atualizados");
       });
 
       socioVariableSelect.addEventListener("change", () => {
@@ -4231,7 +4235,6 @@
         updateSelectionStatus();
         const label = socioMetadata[selectedSocioVariable].label;
         refreshDemonstratorFromSelection("variavel IBGE atualizada");
-        scheduleRealtimeScientificRefresh("variável IBGE atualizada");
         updateRobotMessage("Variável sociodemográfica ativa: <b>" + label + "</b>.");
       });
 
@@ -4239,7 +4242,6 @@
         selectedSocioScope = socioScopeSelect.value;
         updateSelectionStatus();
         refreshDemonstratorFromSelection("escopo IBGE atualizado");
-        scheduleRealtimeScientificRefresh("escopo IBGE atualizado");
         updateRobotMessage(
           "Escopo sociodemográfico ativo: <b>" +
             (selectedSocioScope === "geres" ? "Nível GERES" : "Municipal geral") +
@@ -4266,7 +4268,6 @@
         robotWiggleEarring();
         updateSelectionStatus();
         refreshDemonstratorFromSelection("GERES atualizada");
-        scheduleRealtimeScientificRefresh("GERES atualizada");
         updateRobotMessage("GERES selecionada: <b>" + (activeGeres === "ALL" ? "Todas as GERES" : activeGeres) + "</b>.");
       });
 
@@ -4280,7 +4281,6 @@
         await drawMunicipioById(municipioId, municipioLabel);
         updateSelectionStatus();
         refreshDemonstratorFromSelection("municipio atualizado");
-        scheduleRealtimeScientificRefresh("município atualizado");
         if (municipioId) {
           robotSmile();
           updateRobotMessage("Municipio selecionado: <b>" + municipioLabel + "</b>.");
@@ -4299,7 +4299,6 @@
       analysisModeSelect.addEventListener("change", () => {
         selectedDemoMode = analysisModeSelect.value;
         refreshDemonstratorFromSelection("metodo atualizado");
-        scheduleRealtimeScientificRefresh("método atualizado");
       });
 
       downloadDemoImageBtn.addEventListener("click", async () => {
@@ -4429,9 +4428,8 @@
 
       // Bootstrap only the lightweight base map. Scientific products are never
       // generated during page initialization.
-      mapCard.addEventListener("mouseenter", scheduleMapBootstrap, { once: true });
-      mapCard.addEventListener("touchstart", scheduleMapBootstrap, { once: true });
-      setTimeout(scheduleMapBootstrap, 250);
+      // No automatic map bootstrap. ensureMapReady() is invoked only by explicit
+      // map actions (generate/apply/download) or territorial drawing requests.
 
       fillGeresSelect();
       selectedYears.add(2026);
@@ -4442,12 +4440,7 @@
       refreshDemonstratorFromSelection("selecao inicial");
       setMapLoading("", false);
 
-      // Disease data is useful for later previews but must never block first paint.
-      setTimeout(() => {
-        loadDiseaseDataForSelection().then(() => {
-          updateSelectionStatus();
-        }).catch(() => {});
-      }, 1200);
+      // No epidemiological fetch at startup. It is loaded on explicit interaction.
     </script>
   </body>
 </html>
