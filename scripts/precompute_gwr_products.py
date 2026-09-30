@@ -34,7 +34,14 @@ def prepare(disease: str, year: int, predictors: list[str], force: bool=False) -
         title_prefix=f"EpiGeoData | GWR {disease} x {' + '.join(predictors)}",
         render_maps=False,
     )
-    def stored(path): return str(Path(path).resolve())
+    def stored(path):
+        # Products committed by GitHub Actions must be relocatable. Render
+        # checks out the repository in a different absolute directory.
+        p=Path(path).resolve()
+        try:
+            return p.relative_to(BASE).as_posix()
+        except ValueError:
+            return str(p)
     payload={
         "schema_version":1,"prepared_at":datetime.now(timezone.utc).isoformat(),
         "disease_key":disease,"year":year,"predictors":predictors,
