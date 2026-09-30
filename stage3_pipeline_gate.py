@@ -36,7 +36,8 @@ def require_authorized_gwr(
         missing=required-set(frame.columns)
         if missing: raise ModelNotAuthorized(f"Missing validated panel fields: {sorted(missing)}")
         codes=frame["municipio_ibge"].astype(str).str.replace(r"\.0$","",regex=True)
-        if not codes.str.fullmatch(r"\d{7}").all(): raise ModelNotAuthorized("Invalid IBGE municipality codes")
+        invalid_codes=codes[~codes.str.fullmatch(r"\d{7}")]
+        if not invalid_codes.empty: raise ModelNotAuthorized(f"Invalid IBGE municipality codes: {invalid_codes.head(8).tolist()}")
         if frame["ano"].nunique()!=1: raise ModelNotAuthorized("GWR requires one explicit analytical period per model")
         if frame[["municipio_ibge","ano"]].duplicated().any(): raise ModelNotAuthorized("Duplicate municipality-period rows")
         for col in [dependent_var,*independent_vars]:
