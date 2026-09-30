@@ -1658,7 +1658,8 @@
       let diseaseDataSource = "Estimativa padrão";
       let selectionStatusRequestId = 0;
       const diseaseDataCache = new Map();
-      let currentMapGeoJson = null;\n      let lastTemporalSeries = null;
+      let currentMapGeoJson = null;
+      let lastTemporalSeries = null;
       let lastDemoImageDataUrl = "";
       let lastDemoLabel = "camada inicial";
       let selectedDemoMode = "gwr";
@@ -3282,7 +3283,8 @@
           heat: "Mapa de calor",
           kernel: "Kernel",
           density: "Densidade",
-          moran: "Moran local",\n          series: "Série temporal"
+          moran: "Moran local",
+          series: "Série temporal"
         };
         return labels[mode] || labels.overlay;
       }
