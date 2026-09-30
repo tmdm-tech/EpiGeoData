@@ -3214,25 +3214,25 @@
           ],
           90,
           1,
-          (point) => point.combinedIntensity
+          (point) => point.diseaseIntensity
         );
       }
 
       function renderKernelMode(ctx, projected) {
         drawBasePolygons(ctx, projected);
-        const bandwidth = 110;
-        drawGaussianField(
-          ctx,
-          projected.features,
-          [
-            { offset: 0, color: "rgba(232,63,243,{a})", alpha: 0.6 },
-            { offset: 0.6, color: "rgba(130,117,255,{a})", alpha: 0.35 },
-            { offset: 1, color: "rgba(130,117,255,{a})", alpha: 0.0 }
-          ],
-          bandwidth,
-          1,
-          (point) => point.combinedIntensity
-        );
+        const observed=projected.features.filter(p=>Number.isFinite(p.diseaseIntensity));
+        if(!observed.length)return {n:0,bandwidth:null};
+        const bandwidth=70;
+        const cols=72, rows=46, cellW=ctx.canvas.width/cols, cellH=ctx.canvas.height/rows;
+        const vals=[]; let vmax=0;
+        for(let gy=0;gy<rows;gy++)for(let gx=0;gx<cols;gx++){
+          const x=(gx+.5)*cellW,y=(gy+.5)*cellH;let kde=0;
+          observed.forEach(p=>{const dx=x-p.centroid[0],dy=y-p.centroid[1];const d2=dx*dx+dy*dy;kde+=p.diseaseIntensity*Math.exp(-0.5*d2/(bandwidth*bandwidth));});
+          vals.push(kde);vmax=Math.max(vmax,kde);
+        }
+        let k=0;
+        for(let gy=0;gy<rows;gy++)for(let gx=0;gx<cols;gx++){const r=vmax?vals[k++]/vmax:0;if(r>.02){ctx.fillStyle="rgba("+Math.round(90+150*r)+","+Math.round(70+60*(1-r))+","+Math.round(220-90*r)+","+(0.08+0.72*r).toFixed(3)+")";ctx.fillRect(gx*cellW,gy*cellH,cellW+1,cellH+1);}}
+        return {n:observed.length,bandwidth};
       }
 
       function renderDensityMode(ctx, projected, width, height) {
@@ -3286,46 +3286,13 @@
 
       function renderMoranMode(ctx, projected) {
         drawBasePolygons(ctx, projected);
-        const values = projected.features.map((point) => point.combinedIntensity);
-        const n = values.length;
-        const mean = values.reduce((acc, v) => acc + v, 0) / Math.max(n, 1);
-        const z = values.map((value) => value - mean);
-        const variance = z.reduce((acc, v) => acc + v * v, 0) / Math.max(n, 1);
-        const std = Math.sqrt(Math.max(variance, 1e-8));
-        const zStd = z.map((v) => v / std);
-
-        const classes = { HH: 0, LL: 0, HL: 0, LH: 0 };
-        let localIAccum = 0;
-
-        projected.features.forEach((point, idx) => {
-          const neighbors = nearestNeighbors(projected.features, idx, Math.min(4, Math.max(1, n - 1)));
-          const neighMean = neighbors.reduce((acc, nIdx) => acc + zStd[nIdx], 0) / Math.max(neighbors.length, 1);
-          const localI = zStd[idx] * neighMean;
-          localIAccum += localI;
-
-          let cls = "HH";
-          if (zStd[idx] >= 0 && neighMean >= 0) cls = "HH";
-          if (zStd[idx] < 0 && neighMean < 0) cls = "LL";
-          if (zStd[idx] >= 0 && neighMean < 0) cls = "HL";
-          if (zStd[idx] < 0 && neighMean >= 0) cls = "LH";
-          classes[cls] += 1;
-
-          const palette = {
-            HH: "rgba(255,70,70,0.86)",
-            LL: "rgba(70,153,255,0.82)",
-            HL: "rgba(255,195,84,0.86)",
-            LH: "rgba(107,224,169,0.86)"
-          };
-          ctx.fillStyle = palette[cls];
-          ctx.beginPath();
-          ctx.arc(point.centroid[0], point.centroid[1], 7 + Math.abs(localI) * 8, 0, Math.PI * 2);
-          ctx.fill();
-        });
-
-        return {
-          localMoranMean: localIAccum / Math.max(n, 1),
-          classes
-        };
+        const valid=projected.features.map((p,i)=>({p,i,v:p.diseaseIntensity})).filter(x=>Number.isFinite(x.v));
+        if(valid.length<3)return {classes:{HH:0,LL:0,HL:0,LH:0,NS:projected.features.length},localMoranMean:0,significance:"não calculada"};
+        const vals=valid.map(x=>x.v),mean=vals.reduce((a,b)=>a+b,0)/vals.length;
+        const sd=Math.sqrt(vals.reduce((a,v)=>a+(v-mean)*(v-mean),0)/vals.length)||1;
+        const classes={HH:0,LL:0,HL:0,LH:0,NS:projected.features.length-valid.length};let isum=0;
+        valid.forEach((item,vi)=>{const zi=(item.v-mean)/sd;const distances=valid.map((o,j)=>({j,d:j===vi?Infinity:distance2d(item.p.centroid,o.p.centroid)})).sort((a,b)=>a.d-b.d).slice(0,Math.min(4,valid.length-1));const lag=distances.reduce((a,o)=>a+(valid[o.j].v-mean)/sd,0)/Math.max(distances.length,1);const I=zi*lag;isum+=I;let cls=zi>=0?(lag>=0?"HH":"HL"):(lag<0?"LL":"LH");classes[cls]++;const palette={HH:"rgba(215,48,39,.88)",LL:"rgba(49,130,189,.88)",HL:"rgba(252,141,89,.88)",LH:"rgba(116,173,209,.88)"};ctx.fillStyle=palette[cls];ctx.strokeStyle="rgba(255,255,255,.45)";item.p.rings.forEach(r=>{if(!r.length)return;ctx.beginPath();ctx.moveTo(r[0][0],r[0][1]);for(let q=1;q<r.length;q++)ctx.lineTo(r[q][0],r[q][1]);ctx.closePath();ctx.fill();ctx.stroke();});});
+        return {classes,localMoranMean:isum/valid.length,significance:"exploratória; permutação ainda não homologada"};
       }
 
       function describeMode(mode) {
