@@ -148,7 +148,7 @@ def load_pernambuco_municipalities() -> gpd.GeoDataFrame:
                     headers={"User-Agent":"EpiGeoData/1.0 scientific-research","Accept-Encoding":"identity"})
         with urlopen(req,timeout=30) as response:
             raw=response.read()
-            if raw[:2] == b"\\x1f\\x8b":
+            if raw[:2] == bytes([0x1f,0x8b]):
                 raw=gzip.decompress(raw)
             official=json.loads(raw.decode("utf-8"))
         official_by_name={normalize_text(item["nome"]):str(item["id"]) for item in official
