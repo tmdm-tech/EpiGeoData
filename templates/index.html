@@ -3847,7 +3847,7 @@
           try {
             // Leaflet/canvas feedback is the interactive path. Do not serialize
             // it behind the 300-dpi backend renderer.
-            const overlayTask = selectedClimates.size > 0
+            const overlayTask = selectedClimates.size > 0 && !["gwr","series"].includes(selectedDemoMode)
               ? generateOverlay({ skipProfessional: true })
               : Promise.resolve();
             const professionalTask = generateProfessionalOverlayMap(institutionalProfessionalMapTitle, serial);
