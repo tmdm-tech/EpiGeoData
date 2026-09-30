@@ -4090,7 +4090,7 @@
 
         const baseMaps={osm:["https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png","&copy; OpenStreetMap contributors"],light:["https://tile.openstreetmap.org/{z}/{x}/{y}.png","&copy; OpenStreetMap contributors"],topo:["https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png","Map data &copy; OpenStreetMap, SRTM | Map style &copy; OpenTopoMap"]};
         const setBaseMap=(key)=>{if(baseTileLayer)map.removeLayer(baseTileLayer);const spec=baseMaps[key]||baseMaps.osm;baseTileLayer=L.tileLayer(spec[0],{maxZoom:19,attribution:spec[1]}).addTo(map);};
-        setBaseMap(baseMapSelect?.value||"osm");baseMapSelect?.addEventListener("change",()=>setBaseMap(baseMapSelect.value));
+        setBaseMap(baseMapSelect?.value||"osm");
 
         let estadoGeo = null;
         let catalog = [];
@@ -4194,7 +4194,8 @@
         return mapReadyPromise;
       }
 
-      document.getElementById("fitPeBtn")?.addEventListener("click",()=>{if(estadoLayer)map.fitBounds(estadoLayer.getBounds(),{padding:[18,18]});});
+      document.getElementById("fitPeBtn")?.addEventListener("click",async()=>{await ensureMapReady();if(estadoLayer)map.fitBounds(estadoLayer.getBounds(),{padding:[18,18]});});
+      baseMapSelect?.addEventListener("change", async()=>{await ensureMapReady();if(map && window.L){if(baseTileLayer)map.removeLayer(baseTileLayer);const baseMaps={osm:["https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png","&copy; OpenStreetMap contributors"],light:["https://tile.openstreetmap.org/{z}/{x}/{y}.png","&copy; OpenStreetMap contributors"],topo:["https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png","Map data &copy; OpenStreetMap, SRTM | Map style &copy; OpenTopoMap"]};const spec=baseMaps[baseMapSelect.value]||baseMaps.osm;baseTileLayer=L.tileLayer(spec[0],{maxZoom:19,attribution:spec[1]}).addTo(map);}});
       document.getElementById("printMapBtn")?.addEventListener("click",()=>window.print());
       document.getElementById("shareMapBtn")?.addEventListener("click",async()=>{const state={disease:resolveDiseaseApiKey(selectedDisease.name),years:Array.from(selectedYears),climates:Array.from(selectedClimates),geres:activeGeres,municipio:municipioSelect.value,method:selectedDemoMode};const url=location.origin+location.pathname+"#view="+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(state)))));try{await navigator.clipboard.writeText(url);updateRobotMessage("Link da seleção copiado.");}catch(_){prompt("Copie o link:",url);}});
       layerOpacity?.addEventListener("input",styleVisibleLayers);layerColor?.addEventListener("input",styleVisibleLayers);
@@ -4315,6 +4316,8 @@
       geresSelect.addEventListener("change", async () => {
         activeGeres = geresSelect.value;
         applyMunicipioFilters();
+        await drawGeres(activeGeres);
+        refreshLayerPanel();
         robotWiggleEarring();
         updateSelectionStatus();
         refreshDemonstratorFromSelection("GERES atualizada");
@@ -4328,6 +4331,8 @@
       municipioSelect.addEventListener("change", async () => {
         const municipioId = municipioSelect.value;
         const municipioLabel = municipioSelect.options[municipioSelect.selectedIndex]?.text || "";
+        await drawMunicipioById(municipioId, municipioLabel);
+        refreshLayerPanel();
         updateSelectionStatus();
         refreshDemonstratorFromSelection("municipio atualizado");
         if (municipioId) {
