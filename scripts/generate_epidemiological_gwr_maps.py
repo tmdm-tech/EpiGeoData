@@ -107,14 +107,16 @@ def _fit_validated_gwr(joined, dependent: str, predictors: list[str], target_crs
         raise DataValidationError("Insufficient municipalities for model dimensionality")
     if np.any(np.std(x, axis=0) <= 1e-12) or np.std(y) <= 1e-12:
         raise DataValidationError("Zero-variance outcome or predictor")
+    # Diagnose collinearity on standardized predictors so different physical
+    # units (e.g. mm rainfall vs degrees C) do not inflate the condition number.
+    x = (x - x.mean(axis=0)) / x.std(axis=0)
+    y = (y - y.mean(axis=0)) / y.std(axis=0)
     design = np.column_stack((np.ones(len(x)), x))
     if np.linalg.matrix_rank(design) != design.shape[1]:
         raise DataValidationError("Collinear predictors; revise the scientific specification")
     condition = float(np.linalg.cond(design))
     if not math.isfinite(condition) or condition > 30:
-        raise DataValidationError(f"Global design condition number too high: {condition}")
-    x = (x - x.mean(axis=0)) / x.std(axis=0)
-    y = (y - y.mean(axis=0)) / y.std(axis=0)
+        raise DataValidationError(f"Global standardized design condition number too high: {condition}")
     bandwidth = Sel_BW(coords, y, x, spherical=False).search()
     if not np.isfinite(bandwidth) or bandwidth <= len(predictors) + 1:
         raise DataValidationError("Invalid or undersized GWR bandwidth")
