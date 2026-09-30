@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "prepared_at": "2026-09-30T15:23:12.397336+00:00",
+  "disease_key": "esquistossomose",
+  "year": 2021,
+  "predictors": [
+    "temperatura_media_c",
+    "precipitacao_anual_mm"
+  ],
+  "panel_file": "data/gwr_products/painel_esquistossomose_2021_temperatura_media_c_precipitacao_anual_mm.csv",
+  "joined_geojson_file": "data/gwr_products/gwr_2021_resultados.geojson",
+  "map_files": {
+    "gwr_local_r2": "data/gwr_products/gwr_2021_gwr_local_r2.png",
+    "gwr_temperatura_media_c": "data/gwr_products/gwr_2021_gwr_temperatura_media_c.png",
+    "gwr_precipitacao_anual_mm": "data/gwr_products/gwr_2021_gwr_precipitacao_anual_mm.png"
+  },
+  "bandwidth": 48.0,
+  "records_used": 62,
+  "methodology": "INMET anual; estação automática mais próxima ao centróide; somente casos completos; sem imputação; ajuste GWR estadual validado; recortes territoriais não refazem o modelo",
+  "sources": {
+    "climate": "INMET Dados Históricos Anuais",
+    "epidemiology": "DATASUS/TABNET",
+    "territory": "IBGE Malha Municipal"
+  }
+}
