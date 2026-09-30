@@ -4,7 +4,6 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>EpiGeoData</title>
-    <link rel="preconnect" href="https://servicodados.ibge.gov.br" crossorigin />
     <style>
       :root {
           --bg-1: #050010;
@@ -2106,7 +2105,8 @@
           ")" +
           "</small>";
 
-        void updateSelectionDataStatus();
+        // Status remoto é verificado apenas quando uma ação científica é executada.
+        // Nunca iniciar fetch como efeito colateral de renderizar a seleção.
       }
 
       function normalizeUiStatus(value) {
@@ -2128,12 +2128,16 @@
         }).join("");
       }
 
-      async function probeEndpointStatus(url) {
+      async function probeEndpointStatus(url, timeoutMs = 3000) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
         try {
-          const response = await fetch(url, { cache: "force-cache" });
+          const response = await fetch(url, { cache: "force-cache", signal: controller.signal });
           return response.ok;
         } catch (_) {
           return false;
+        } finally {
+          clearTimeout(timer);
         }
       }
 
