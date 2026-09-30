@@ -3346,7 +3346,18 @@
 
       function renderDemonstratorImage(label, options = {}) {
         lastDemoLabel = label;
-        const featureCollection = currentMapGeoJson || getCurrentBaseFeatureCollection() || localPreviewGeoJson;
+        const featureCollection = currentMapGeoJson || getCurrentBaseFeatureCollection();
+        if (!featureCollection || !(featureCollection.features || []).length) {
+          ctx.clearRect(0, 0, width, height);
+          ctx.fillStyle = "#100b1d";
+          ctx.fillRect(0, 0, width, height);
+          ctx.fillStyle = "#d8cce8";
+          ctx.font = "600 18px Arial";
+          ctx.textAlign = "center";
+          ctx.fillText("Carregando cartografia oficial de Pernambuco...", width / 2, height / 2);
+          ctx.textAlign = "left";
+          return;
+        }
         if (!featureCollection || !featureCollection.features || featureCollection.features.length === 0) {
           if (!options.skipMeta) {
             demoMeta.innerHTML = "<span><strong>Status:</strong> sem geometrias para demonstrar</span>";
@@ -3891,7 +3902,9 @@
             const overlayTask = selectedClimates.size > 0 && !["gwr","series"].includes(selectedDemoMode)
               ? generateOverlay({ skipProfessional: true })
               : Promise.resolve();
-            const professionalTask = generateProfessionalOverlayMap(institutionalProfessionalMapTitle, serial);
+            const professionalTask = ["gwr","series"].includes(selectedDemoMode)
+              ? generateProfessionalOverlayMap(institutionalProfessionalMapTitle, serial)
+              : Promise.resolve();
             await Promise.allSettled([overlayTask, professionalTask]);
           } catch (error) {
             if (error?.name !== "AbortError") {
@@ -4490,10 +4503,9 @@
         });
       }
 
-      // Bootstrap only the lightweight base map. Scientific products are never
-      // generated during page initialization.
-      // No automatic map bootstrap. ensureMapReady() is invoked only by explicit
-      // map actions (generate/apply/download) or territorial drawing requests.
+      // Bootstrap only Leaflet + official local Pernambuco cartography.
+      // No scientific product is generated here.
+      scheduleMapBootstrap();
 
       fillGeresSelect();
       selectedYears.add(2026);
