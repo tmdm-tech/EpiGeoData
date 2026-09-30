@@ -25,7 +25,8 @@ def prepare(disease: str, year: int, predictors: list[str], force: bool=False) -
         panel_path,webapp.DEFAULT_PERNAMBUCO_CARTOGRAPHY,"desfecho",predictors,
         output_dir=webapp._runtime_gwr_dir(),analysis_year=year,
         save_joined_geodata=True,dpi=300,
-        title_prefix=f"EpiGeoData | GWR {disease} x {' + '.join(predictors)}"
+        title_prefix=f"EpiGeoData | GWR {disease} x {' + '.join(predictors)}",
+        render_maps=False,
     )
     def stored(path): return str(Path(path).resolve())
     payload={
