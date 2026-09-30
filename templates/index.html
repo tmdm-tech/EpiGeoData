@@ -2493,12 +2493,15 @@
           return;
         }
 
+        if (currentMode !== "gwr") {
+          throw new Error("Renderer profissional legado desativado para este método.");
+        }
         if (professionalMapAbortController) professionalMapAbortController.abort();
         const controller = new AbortController();
         professionalMapAbortController = controller;
 
         try {
-          const endpoint = currentMode === "gwr" ? "/api/maps/gwr-runtime" : "/api/maps/professional-overlay";
+          const endpoint = "/api/maps/gwr-runtime";
           const response = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -2682,125 +2685,6 @@
         }
         const acc = points.reduce((sum, coord) => [sum[0] + coord[0], sum[1] + coord[1]], [0, 0]);
         return [acc[0] / points.length, acc[1] / points.length];
-      }
-
-      async function fetchRealtimeMunicipio(municipio, lat, lon) {
-        const key = normalizeName(municipio) + ":" + lat.toFixed(3) + ":" + lon.toFixed(3);
-        if (realtimeMunicipioCache.has(key)) {
-          return realtimeMunicipioCache.get(key);
-        }
-
-        try {
-          const response = await fetch("/api/realtime/municipio", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ municipio, lat, lon })
-          });
-          if (!response.ok) {
-            throw new Error("Falha no realtime");
-          }
-          const payload = await response.json();
-          realtimeMunicipioCache.set(key, payload);
-          return payload;
-        } catch (_) {
-          const fallback = {
-            clima_ambiente: {
-              pluviosidade_mm_h: 0.4,
-              temperatura_c: 27.8,
-              cobertura_vegetal_idx: 0.52,
-              relevo_elevacao_m: 280,
-              hidrografia_proximidade_idx: 0.48,
-              fontes: {
-                pluviosidade: "Fallback",
-                temperatura: "Fallback",
-                cobertura_vegetal: "Fallback",
-                relevo: "Fallback",
-                hidrografia: "Fallback"
-              }
-            },
-            datasus: { agravos: {} }
-          };
-          realtimeMunicipioCache.set(key, fallback);
-          return fallback;
-        }
-      }
-
-      function norm(value, min, max) {
-        const safe = max - min === 0 ? 1 : max - min;
-        return clamp01((value - min) / safe);
-      }
-
-      function gwrColor(score) {
-        const v = clamp01(score);
-        const r = Math.round(70 + v * 185);
-        const g = Math.round(170 - v * 120);
-        const b = Math.round(224 - v * 180);
-        return "rgb(" + r + "," + g + "," + b + ")";
-      }
-
-      async function buildGwrOverlayData() {
-        throw new Error("GWR sintético desativado: use somente /api/maps/gwr-runtime com produto persistido validado.");
-      }
-
-      function renderGwrMode(ctx, projected) {
-        const values=projected.features.map(p=>p.gwrLocalR2).filter(Number.isFinite);
-        const min=values.length?Math.min(...values):0;
-        const max=values.length?Math.max(...values):1;
-        const range=Math.max(max-min,1e-9);
-        projected.features.forEach((point)=>{
-          const norm=Number.isFinite(point.gwrLocalR2)?clamp01((point.gwrLocalR2-min)/range):null;
-          const style=choroplethFill(norm);
-          ctx.fillStyle=style.fill; ctx.strokeStyle=style.stroke; ctx.lineWidth=style.lw;
-          point.rings.forEach((ring)=>{
-            if(!ring.length)return;
-            ctx.beginPath(); ctx.moveTo(ring[0][0],ring[0][1]);
-            for(let i=1;i<ring.length;i++)ctx.lineTo(ring[i][0],ring[i][1]);
-            ctx.closePath(); ctx.fill(); ctx.stroke();
-          });
-        });
-        return {min,max,n:values.length};
-      }
-
-      function renderTemporalSeries(ctx, width, height) {
-        const points=lastTemporalSeries?.series || [];
-        ctx.clearRect(0,0,width,height);
-        ctx.fillStyle="#171020";ctx.fillRect(0,0,width,height);
-        ctx.fillStyle="#f3e9ff";ctx.font="bold 18px Trebuchet MS";
-        ctx.fillText("Série temporal — "+selectedDisease.name,24,34);
-        ctx.font="12px Trebuchet MS";
-        ctx.fillText((lastTemporalSeries?.scope||"Pernambuco")+" | "+(lastTemporalSeries?.aggregation||"indicador"),24,55);
-        if(points.length<1){ctx.fillText("Sem anos disponíveis para a seleção.",24,90);return;}
-        const left=70,right=25,top=85,bottom=55,w=width-left-right,h=height-top-bottom;
-        const vals=points.map(p=>Number(p.value)); const ymin=Math.min(...vals), ymax=Math.max(...vals); const yr=Math.max(ymax-ymin,1e-9);
-        ctx.strokeStyle="rgba(230,220,255,.55)";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,top);ctx.lineTo(left,top+h);ctx.lineTo(left+w,top+h);ctx.stroke();
-        ctx.strokeStyle="#c59cff";ctx.lineWidth=3;ctx.beginPath();
-        points.forEach((p,i)=>{const x=left+(points.length===1?w/2:i*w/(points.length-1));const y=top+h-(Number(p.value)-ymin)/yr*h;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});
-        ctx.stroke();
-        points.forEach((p,i)=>{const x=left+(points.length===1?w/2:i*w/(points.length-1));const y=top+h-(Number(p.value)-ymin)/yr*h;ctx.fillStyle="#f5e8ff";ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fill();ctx.font="10px Trebuchet MS";ctx.fillText(String(p.year),x-13,top+h+20);});
-        ctx.font="11px Trebuchet MS";ctx.fillStyle="#e8dcf5";ctx.fillText(ymax.toFixed(2),12,top+4);ctx.fillText(ymin.toFixed(2),12,top+h);
-        lastDemoImageDataUrl=demoCanvas.toDataURL("image/png");
-      }
-
-      function clamp01(value) {
-        return Math.max(0, Math.min(1, value));
-      }
-
-      function distance2d(a, b) {
-        const dx = a[0] - b[0];
-        const dy = a[1] - b[1];
-        return Math.sqrt(dx * dx + dy * dy);
-      }
-
-      async function loadSpatialMunicipalObservations() {
-        const body={disease_key:resolveDiseaseApiKey(selectedDisease.name),selected_years:Array.from(selectedYears).map(Number).filter(Number.isFinite)};
-        const response=await fetch("/api/spatial/municipal-values",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-        const payload=await response.json();
-        if(!response.ok) throw new Error(payload?.error||"Dados municipais indisponíveis");
-        spatialMunicipalPayload=payload;
-        diseaseMunicipioValues.clear();
-        (payload.municipal_values||[]).forEach(row=>{const v=Number(row.value);if(Number.isFinite(v))diseaseMunicipioValues.set(normalizeName(row.municipio),v);});
-        if(payload.municipalities_geojson) currentMapGeoJson=payload.municipalities_geojson;
-        return payload;
       }
 
       function buildProjectedSpatialData(featureCollection, width, height) {
@@ -3875,85 +3759,6 @@
 
         updateRobotMessage("Produto " + describeMode(activeMode) + " atualizado com observações municipais disponíveis, sem imputação.");
         return;
-        const byMunicipio = new Map(gwrRows.map((row) => [normalizeName(row.municipio), row]));
-
-        const values = gwrRows.map((row) => row.gwrScore);
-        const vMin = Math.min(...values, 0);
-        const vMax = Math.max(...values, 1);
-
-        const style = (feature) => {
-          const municipio = getFeatureMunicipioName(feature);
-          const row = byMunicipio.get(normalizeName(municipio));
-          const score = row ? row.gwrScore : 0.4;
-          const r = norm(score, vMin, vMax);
-          if (activeMode === "kernel" || activeMode === "heat") {
-            return { color: "#514764", weight: 0.8, fillColor: "#eee8f6", fillOpacity: 0.10 };
-          }
-          if (activeMode === "density") {
-            return { color: "#30384a", weight: 0.9, fillColor: gwrColor(score), fillOpacity: 0.12 + r * 0.72 };
-          }
-          if (activeMode === "moran") {
-            const cls = score >= (vMin + vMax) / 2 ? "#e34a33" : "#3182bd";
-            return { color: "#555", weight: 0.9, fillColor: cls, fillOpacity: 0.68 };
-          }
-          return { color: "#2b2440", weight: 1.4, fillColor: gwrColor(score), fillOpacity: 0.22 + r * 0.58 };
-        };
-
-        if (municipioLayer) {
-          overlayLayer = L.geoJSON(municipioLayer.toGeoJSON(), { style }).addTo(map);
-          fitOverlayBounds(overlayLayer);
-        } else if (geresLayerGroup) {
-          const geos = [];
-          geresLayerGroup.eachLayer((layer) => geos.push(layer.toGeoJSON()));
-          overlayLayer = L.geoJSON(geos, { style }).addTo(map);
-          fitOverlayBounds(overlayLayer);
-        } else if (estadoGeoCache) {
-          overlayLayer = L.geoJSON(estadoGeoCache, { style }).addTo(map);
-          fitOverlayBounds(overlayLayer);
-        }
-
-        await drawSelectedClimateLayers();
-
-        gwrMarkerLayer = L.layerGroup().addTo(map);
-        if (activeMode === "gwr" || activeMode === "overlay") gwrRows.forEach((row) => {
-          const marker = L.circleMarker([row.lat, row.lon], {
-            radius: 4 + row.gwrScore * 6,
-            color: "#1f1a2b",
-            weight: 1,
-            fillColor: gwrColor(row.gwrScore),
-            fillOpacity: 0.88
-          }).bindPopup(
-            "GWR - " +
-              row.municipio +
-              "<br/>Score: " +
-              row.gwrScore.toFixed(3) +
-              "<br/>Chuva: " +
-              row.chuva.toFixed(2) +
-              " mm/h" +
-              "<br/>Temp: " +
-              row.temperatura.toFixed(2) +
-              " C"
-          );
-          marker.addTo(gwrMarkerLayer);
-        });
-
-        currentMapGeoJson = getCurrentBaseFeatureCollection();
-        const climateLabel = Array.from(selectedClimates).join(" + ") || "Clima";
-        const geresLabel = activeGeres === "ALL" ? "PE" : activeGeres;
-        const overlayName = climateLabel + " x " + selectedDisease.name + " : " + geresLabel;
-        lastDemoLabel = describeMode(activeMode) + " - " + overlayName;
-        addDiseaseLegend(overlayName);
-        // Preserve the analysis method selected by the user.
-
-        animateRobot("bounce");
-        robotSmile();
-        updateRobotMessage(
-          "Mapa científico (" + describeMode(activeMode) + ") atualizado: <b>" + overlayName + "</b>." +
-            "<br/><small>Base em tempo real: pluviosidade, temperatura, cobertura vegetal, relevo e hidrografia + DATASUS.</small>"
-        );
-
-        refreshDemonstratorFromSelection("mapa sobreposto atualizado", { render: true });
-        await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
       }
 
       function openAuthModal(type) {
@@ -4397,18 +4202,7 @@
           await downloadProfessionalMapFromBackend();
           updateRobotMessage("Mapa cartográfico em 300 dpi baixado com sucesso.");
         } catch (_) {
-          try {
-            if (!lastProfessionalMapUrl) {
-              await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
-            }
-            if (!lastProfessionalMapUrl) {
-              throw new Error("Sem URL de mapa profissional");
-            }
-            await downloadBlobFile(lastProfessionalMapUrl, "sobreposicao_cientifica_pernambuco_300dpi.png");
-            updateRobotMessage("Mapa cartográfico em 300 dpi baixado com sucesso.");
-          } catch (_) {
-            updateRobotMessage("Falha ao baixar o mapa cartográfico em 300 dpi. Tente gerar novamente o mapa sobreposto.");
-          }
+          updateRobotMessage("Falha ao baixar o produto atual. Gere novamente o método selecionado.");
         } finally {
           downloadProfessionalMapBtn.disabled = false;
           downloadProfessionalMapBtn.textContent = originalLabel;
