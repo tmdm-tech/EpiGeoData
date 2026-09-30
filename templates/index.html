@@ -1246,6 +1246,7 @@
 
       .status-badge.disponivel { background: rgba(76,175,80,0.2); color: #81c784; }
       .status-badge.pendente   { background: rgba(255,152,0,0.2);  color: #ffb74d; }
+    .methodology-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.methodology-grid div{border:1px solid rgba(190,150,255,.24);border-radius:10px;padding:12px;background:rgba(28,17,48,.48)}.methodology-grid strong{display:block;color:#f0ddff;margin-bottom:5px}.methodology-grid span{font-size:12px;line-height:1.5;color:rgba(244,235,255,.78)}@media(max-width:760px){.methodology-grid{grid-template-columns:1fr}}
     </style>
   </head>
   <body>
@@ -1405,6 +1406,19 @@
             </div>
             <div class="socio-badge" id="socioSourceInfo">
               Fonte ativa: IBGE padrão (quando disponível em tempo real).
+            </div>
+          </article>
+
+          <article class="card methodology-card">
+            <h2>Introdução metodológica aos produtos espaciais</h2>
+            <p>O EpiGeoData distingue método analítico de forma de visualização. Cada produto abaixo responde a uma pergunta diferente e só é exibido quando existem dados compatíveis com sua metodologia.</p>
+            <div class="methodology-grid">
+              <div><strong>Kernel (KDE)</strong><span>Estima uma superfície contínua de densidade a partir de ocorrências ou pontos ponderados. O bandwidth controla a suavização e a superfície não respeita artificialmente fronteiras municipais.</span></div>
+              <div><strong>Mapa de calor</strong><span>Representa visualmente a intensidade espacial observada. É uma visualização de intensidade; não é apresentado como KDE quando não houve estimação Kernel.</span></div>
+              <div><strong>GWR</strong><span>Mapeia resultados locais de regressão, como coeficientes dos preditores e R² local. O ajuste é estadual, validado e pré-calculado; GERES e município são recortes de exibição.</span></div>
+              <div><strong>Sobreposição multivariada</strong><span>Integra dimensões disponíveis após normalização explícita. A legenda informa quais componentes entraram no índice; variáveis ausentes não recebem valores simulados.</span></div>
+              <div><strong>Análise temporal</strong><span>Exibe a série observada por ano para o território selecionado, preservando anos indisponíveis e a proveniência do indicador.</span></div>
+              <div><strong>Moran local (LISA)</strong><span>Identifica padrões locais HH, LL, HL e LH e separa unidades não significativas. A vizinhança e a significância fazem parte do resultado, não apenas a cor do mapa.</span></div>
             </div>
           </article>
 
