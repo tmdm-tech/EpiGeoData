@@ -1416,7 +1416,7 @@
                     <option value="heat">Mapa de calor</option>
                     <option value="kernel">Kernel</option>
                     <option value="density">Densidade</option>
-                    <option value="moran">Moran local</option>
+                    <option value="moran">Moran local</option>\n                    <option value="series">Série temporal</option>
                   </select>
                   <button class="secondary" id="downloadProfessionalMapBtn">Baixar mapa cartográfico (300 dpi)</button>
                   <button class="secondary" id="downloadDemoImageBtn">Baixar imagem demonstrador (HD)</button>
@@ -1676,7 +1676,7 @@
       let diseaseDataSource = "Estimativa padrão";
       let selectionStatusRequestId = 0;
       const diseaseDataCache = new Map();
-      let currentMapGeoJson = null;
+      let currentMapGeoJson = null;\n      let lastTemporalSeries = null;
       let lastDemoImageDataUrl = "";
       let lastDemoLabel = "camada inicial";
       let selectedDemoMode = "gwr";
@@ -2435,6 +2435,23 @@
           municipio_id: municipioSelect?.value || ""
         };
 
+        if (currentMode === "series") {
+          try {
+            const response=await fetch("/api/series/preview",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(requestBody)});
+            const payload=await response.json();
+            if(!response.ok) throw new Error(payload?.error||"Falha na série temporal");
+            if(expectedSerial!==realtimeRefreshSerial||requestSignature!==currentProfessionalMapSignature())return;
+            lastTemporalSeries=payload;
+            professionalMapPreview.removeAttribute("src"); professionalMapPreview.classList.remove("visible");
+            demoCanvas.style.display="block";
+            renderTemporalSeries(demoCanvas.getContext("2d"),demoCanvas.width,demoCanvas.height);
+            professionalMapStatus.innerHTML="<strong>Série temporal:</strong> "+payload.scope+" | "+payload.series.length+" pontos disponíveis | "+payload.source;
+          } catch(error) {
+            professionalMapStatus.innerHTML="<strong>Série temporal:</strong> "+String(error.message||error);
+          }
+          return;
+        }
+
         if (professionalMapAbortController) professionalMapAbortController.abort();
         const controller = new AbortController();
         professionalMapAbortController = controller;
@@ -2456,13 +2473,19 @@
 
           if (currentMode === "gwr") {
             const gwrUrl = payload?.maps?.gwr_local_r2 || Object.values(payload?.maps || {})[0];
-            if (!gwrUrl) throw new Error("GWR validado sem mapa retornado");
+            if (!gwrUrl || !payload?.joined_geojson) throw new Error("GWR validado sem produtos cartográficos retornados");
             lastProfessionalMapUrl = gwrUrl;
             lastProfessionalMapSignature = requestSignature;
-            professionalMapPreview.src = gwrUrl;
-            professionalMapPreview.classList.add("visible");
+            const geoResponse=await fetch(payload.joined_geojson,{signal:controller.signal});
+            if(!geoResponse.ok) throw new Error("Falha ao carregar GeoJSON GWR persistido");
+            currentMapGeoJson=await geoResponse.json();
+            if(expectedSerial!==realtimeRefreshSerial||requestSignature!==currentProfessionalMapSignature())return;
+            professionalMapPreview.removeAttribute("src");
+            professionalMapPreview.classList.remove("visible");
+            demoCanvas.style.display="block";
+            renderDemonstratorImage("GWR científico persistido",{mode:"gwr"});
             professionalMapStatus.innerHTML =
-              "<strong>GWR validado:</strong> " + payload.records_used + " municípios no ajuste | " +
+              "<strong>GWR validado e pré-visualizado:</strong> " + payload.records_used + " municípios no ajuste | " +
               payload.records_displayed + " exibidos | bandwidth " + Number(payload.bandwidth).toFixed(2) +
               " | " + payload.methodology;
             return;
@@ -2728,19 +2751,42 @@
       }
 
       function renderGwrMode(ctx, projected) {
-        drawBasePolygons(ctx, projected);
-        drawGaussianField(
-          ctx,
-          projected.features,
-          [
-            { offset: 0, color: "rgba(254,77,92,{a})", alpha: 0.82 },
-            { offset: 0.5, color: "rgba(255,197,80,{a})", alpha: 0.38 },
-            { offset: 1, color: "rgba(99,152,255,{a})", alpha: 0.0 }
-          ],
-          96,
-          1,
-          (point) => point.combinedIntensity
-        );
+        const values=projected.features.map(p=>p.gwrLocalR2).filter(Number.isFinite);
+        const min=values.length?Math.min(...values):0;
+        const max=values.length?Math.max(...values):1;
+        const range=Math.max(max-min,1e-9);
+        projected.features.forEach((point)=>{
+          const norm=Number.isFinite(point.gwrLocalR2)?clamp01((point.gwrLocalR2-min)/range):null;
+          const style=choroplethFill(norm);
+          ctx.fillStyle=style.fill; ctx.strokeStyle=style.stroke; ctx.lineWidth=style.lw;
+          point.rings.forEach((ring)=>{
+            if(!ring.length)return;
+            ctx.beginPath(); ctx.moveTo(ring[0][0],ring[0][1]);
+            for(let i=1;i<ring.length;i++)ctx.lineTo(ring[i][0],ring[i][1]);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+          });
+        });
+        return {min,max,n:values.length};
+      }
+
+      function renderTemporalSeries(ctx, width, height) {
+        const points=lastTemporalSeries?.series || [];
+        ctx.clearRect(0,0,width,height);
+        ctx.fillStyle="#171020";ctx.fillRect(0,0,width,height);
+        ctx.fillStyle="#f3e9ff";ctx.font="bold 18px Trebuchet MS";
+        ctx.fillText("Série temporal — "+selectedDisease.name,24,34);
+        ctx.font="12px Trebuchet MS";
+        ctx.fillText((lastTemporalSeries?.scope||"Pernambuco")+" | "+(lastTemporalSeries?.aggregation||"indicador"),24,55);
+        if(points.length<1){ctx.fillText("Sem anos disponíveis para a seleção.",24,90);return;}
+        const left=70,right=25,top=85,bottom=55,w=width-left-right,h=height-top-bottom;
+        const vals=points.map(p=>Number(p.value)); const ymin=Math.min(...vals), ymax=Math.max(...vals); const yr=Math.max(ymax-ymin,1e-9);
+        ctx.strokeStyle="rgba(230,220,255,.55)";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,top);ctx.lineTo(left,top+h);ctx.lineTo(left+w,top+h);ctx.stroke();
+        ctx.strokeStyle="#c59cff";ctx.lineWidth=3;ctx.beginPath();
+        points.forEach((p,i)=>{const x=left+(points.length===1?w/2:i*w/(points.length-1));const y=top+h-(Number(p.value)-ymin)/yr*h;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});
+        ctx.stroke();
+        points.forEach((p,i)=>{const x=left+(points.length===1?w/2:i*w/(points.length-1));const y=top+h-(Number(p.value)-ymin)/yr*h;ctx.fillStyle="#f5e8ff";ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fill();ctx.font="10px Trebuchet MS";ctx.fillText(String(p.year),x-13,top+h+20);});
+        ctx.font="11px Trebuchet MS";ctx.fillStyle="#e8dcf5";ctx.fillText(ymax.toFixed(2),12,top+4);ctx.fillText(ymin.toFixed(2),12,top+h);
+        lastDemoImageDataUrl=demoCanvas.toDataURL("image/png");
       }
 
       function clamp01(value) {
@@ -2834,7 +2880,9 @@
             diseaseNorm,
             diseaseIntensity,
             climateIntensity,
-            combinedIntensity
+            combinedIntensity,
+            gwrLocalR2: Number.isFinite(Number(feature?.properties?.gwr_local_r2)) ? Number(feature.properties.gwr_local_r2) : null,
+            gwrProperties: feature?.properties || {}
           };
         });
 
@@ -3230,7 +3278,7 @@
           heat: "Mapa de calor",
           kernel: "Kernel",
           density: "Densidade",
-          moran: "Moran local"
+          moran: "Moran local",\n          series: "Série temporal"
         };
         return labels[mode] || labels.overlay;
       }
@@ -3294,7 +3342,11 @@
         }
 
         let moranInfo = null;
-        if (mode === "gwr") {
+        if (mode === "series") {
+          renderTemporalSeries(ctx, width, height);
+          if (!options.skipMeta) demoMeta.innerHTML="<span><strong>Série temporal:</strong> prévia calculada a partir dos anos disponíveis na base epidemiológica local.</span>";
+          return;
+        } else if (mode === "gwr") {
           renderGwrMode(ctx, projected);
         } else if (mode === "heat") {
           renderHeatMode(ctx, projected);
@@ -3308,9 +3360,11 @@
           renderOverlayMode(ctx, projected);
         }
 
-        // Sempre reforça no demonstrador as camadas escolhidas (doença + clima + sociodemográfico)
-        renderPersistentSelectionOverlay(ctx, projected);
-        drawChoroplethLegend(ctx, width, height, projected.dMin, projected.dMax);
+        // GWR must display only persisted model outputs; no synthetic overlays.
+        if (mode !== "gwr") {
+          renderPersistentSelectionOverlay(ctx, projected);
+          drawChoroplethLegend(ctx, width, height, projected.dMin, projected.dMax);
+        }
 
         const combined = projected.features.map((item) => item.combinedIntensity);
         const mean = combined.reduce((acc, value) => acc + value, 0) / Math.max(combined.length, 1);
