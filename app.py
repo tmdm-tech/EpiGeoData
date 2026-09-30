@@ -1229,75 +1229,73 @@ def _inmet_annual_station_summary(year: int) -> list[dict]:
         return cached[1]["rows"]
     url=f"https://portal.inmet.gov.br/uploads/dadoshistoricos/{year}.zip"
     req=Request(url,headers={"User-Agent":"EpiGeoData/1.0 scientific-research"})
-    # Stream the annual archive to disk instead of holding the full ZIP in RAM.
-    # This prevents Render's small worker from being killed while preparing GWR.
     import tempfile, shutil
     tmp_path=None
+    rows=[]
     try:
         with tempfile.NamedTemporaryFile(prefix=f"inmet_{year}_",suffix=".zip",delete=False) as tmp:
             tmp_path=Path(tmp.name)
             with urlopen(req,timeout=90) as response:
                 shutil.copyfileobj(response,tmp,length=1024*1024)
-        rows=[]
-        archive_ctx=zipfile.ZipFile(tmp_path)
-        with archive_ctx as archive:
-        for name in archive.namelist():
-            upper=unicodedata.normalize("NFKD",name).encode("ascii","ignore").decode("ascii").upper()
-            if "_PE_" not in upper or not upper.endswith(".CSV"):
-                continue
-            raw=archive.read(name)
-            text_data=None
-            for encoding in ("utf-8-sig","latin-1"):
+        with zipfile.ZipFile(tmp_path) as archive:
+            for name in archive.namelist():
+                upper=unicodedata.normalize("NFKD",name).encode("ascii","ignore").decode("ascii").upper()
+                if "_PE_" not in upper or not upper.endswith(".CSV"):
+                    continue
+                raw=archive.read(name)
+                text_data=None
+                for encoding in ("utf-8-sig","latin-1"):
+                    try:
+                        text_data=raw.decode(encoding); break
+                    except UnicodeDecodeError: pass
+                if not text_data: continue
+                lines=text_data.splitlines()
+                metadata={}
+                header_idx=None
+                for idx,line in enumerate(lines[:20]):
+                    parts=[p.strip().strip('"') for p in line.split(";")]
+                    if len(parts)>=2:
+                        k=unicodedata.normalize("NFKD",parts[0]).encode("ascii","ignore").decode("ascii").upper()
+                        metadata[k.rstrip(":")]=parts[1].replace(",",".")
+                    if "DATA" in parts[0].upper() and len(parts)>5:
+                        header_idx=idx; break
+                if header_idx is None:
+                    header_idx=next((i for i,l in enumerate(lines[:20]) if "PRECIPITA" in l.upper() and "TEMPERATURA" in l.upper()),None)
+                if header_idx is None: continue
+                def meta(*keys):
+                    for wanted in keys:
+                        for k,v in metadata.items():
+                            if wanted in k: return v
+                    return None
                 try:
-                    text_data=raw.decode(encoding); break
-                except UnicodeDecodeError: pass
-            if not text_data: continue
-            lines=text_data.splitlines()
-            metadata={}
-            header_idx=None
-            for idx,line in enumerate(lines[:20]):
-                parts=[p.strip().strip('"') for p in line.split(";")]
-                if len(parts)>=2:
-                    k=unicodedata.normalize("NFKD",parts[0]).encode("ascii","ignore").decode("ascii").upper()
-                    metadata[k.rstrip(":")]=parts[1].replace(",",".")
-                if "DATA" in parts[0].upper() and len(parts)>5:
-                    header_idx=idx; break
-            if header_idx is None:
-                header_idx=next((i for i,l in enumerate(lines[:20]) if "PRECIPITA" in l.upper() and "TEMPERATURA" in l.upper()),None)
-            if header_idx is None: continue
-            def meta(*keys):
-                for wanted in keys:
-                    for k,v in metadata.items():
-                        if wanted in k: return v
-                return None
-            try:
-                lat=float(meta("LATITUDE")); lon=float(meta("LONGITUDE"))
-            except (TypeError,ValueError): continue
-            station=meta("ESTACAO") or Path(name).stem
-            reader=csv.DictReader(io.StringIO("\n".join(lines[header_idx:])),delimiter=";")
-            rain=[]; temp=[]
-            for rec in reader:
-                for col,val in rec.items():
-                    if val is None: continue
-                    normcol=unicodedata.normalize("NFKD",str(col)).encode("ascii","ignore").decode("ascii").upper()
-                    sval=str(val).strip().replace(",",".")
-                    try: num=float(sval)
-                    except ValueError: continue
-                    if num >= 9999: continue
-                    if "PRECIPITACAO TOTAL" in normcol: rain.append(num)
-                    elif "TEMPERATURA DO AR" in normcol and ("BULBO SECO" in normcol or "HORARIA" in normcol): temp.append(num)
-            if rain or temp:
-                rows.append({"estacao":station,"lat":lat,"lon":lon,"precipitacao_anual_mm":sum(rain) if rain else None,
-                             "temperatura_media_c":sum(temp)/len(temp) if temp else None,
-                             "n_precipitacao":len(rain),"n_temperatura":len(temp),"source_url":url})
+                    lat=float(meta("LATITUDE")); lon=float(meta("LONGITUDE"))
+                except (TypeError,ValueError): continue
+                station=meta("ESTACAO") or Path(name).stem
+                reader=csv.DictReader(io.StringIO("\n".join(lines[header_idx:])),delimiter=";")
+                rain=[]; temp=[]
+                for rec in reader:
+                    for col,val in rec.items():
+                        if val is None: continue
+                        normcol=unicodedata.normalize("NFKD",str(col)).encode("ascii","ignore").decode("ascii").upper()
+                        sval=str(val).strip().replace(",",".")
+                        try: num=float(sval)
+                        except ValueError: continue
+                        if num >= 9999: continue
+                        if "PRECIPITACAO TOTAL" in normcol: rain.append(num)
+                        elif "TEMPERATURA DO AR" in normcol and ("BULBO SECO" in normcol or "HORARIA" in normcol): temp.append(num)
+                if rain or temp:
+                    rows.append({"estacao":station,"lat":lat,"lon":lon,
+                                 "precipitacao_anual_mm":sum(rain) if rain else None,
+                                 "temperatura_media_c":sum(temp)/len(temp) if temp else None,
+                                 "n_precipitacao":len(rain),"n_temperatura":len(temp),"source_url":url})
     finally:
         if tmp_path is not None:
             try: tmp_path.unlink(missing_ok=True)
             except OSError: pass
-    if not rows: raise RuntimeError(f"INMET não retornou estações automáticas de PE para {year}")
+    if not rows:
+        raise RuntimeError(f"INMET não retornou estações automáticas de PE para {year}")
     REALTIME_CACHE[key]=(time.time(),{"rows":rows})
     return rows
-
 
 def _disease_year_by_ibge(disease_key: str, year: int) -> tuple[dict[str,float],str]:
     from scripts.generate_choropleth_brazil import resolve_disease_csv, normalize_text
