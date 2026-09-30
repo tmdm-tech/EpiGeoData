@@ -20,9 +20,15 @@ def prepare(disease: str, year: int, predictors: list[str], force: bool=False) -
     panel,meta=webapp._build_runtime_gwr_panel(disease,year,predictors)
     panel_path=webapp._gwr_panel_path(disease,year,predictors)
     panel.to_csv(panel_path,index=False)
+    # Persist the same municipal geometry used to build the panel, enriched
+    # with official seven-digit IBGE codes when the bundled geometry lacks them.
+    from scripts.generate_choropleth_brazil import load_pernambuco_municipalities
+    validated_cartography=webapp._runtime_gwr_dir()/"municipios_pe_ibge_validated.geojson"
+    if not validated_cartography.exists():
+        load_pernambuco_municipalities().to_crs("EPSG:4674").to_file(validated_cartography,driver="GeoJSON")
     from scripts.generate_epidemiological_gwr_maps import generate_epidemiological_gwr_maps
     result=generate_epidemiological_gwr_maps(
-        panel_path,webapp.DEFAULT_PERNAMBUCO_CARTOGRAPHY,"desfecho",predictors,
+        panel_path,validated_cartography,"desfecho",predictors,
         output_dir=webapp._runtime_gwr_dir(),analysis_year=year,
         save_joined_geodata=True,dpi=300,
         title_prefix=f"EpiGeoData | GWR {disease} x {' + '.join(predictors)}",
