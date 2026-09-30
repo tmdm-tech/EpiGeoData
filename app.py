@@ -1326,10 +1326,12 @@ def _disease_year_by_ibge(disease_key: str, year: int) -> tuple[dict[str,float],
 
 
 def _runtime_gwr_dir() -> Path:
-    # Render persistent disk can be mounted at EPIGEODATA_GWR_STORE.
-    # Local/dev falls back to the repository runtime directory.
-    configured=os.environ.get("EPIGEODATA_GWR_STORE","").strip()
-    path=Path(configured) if configured else Path(__file__).parent/"static"/"maps"/"runtime_gwr"
+    """Repository-backed GWR product store.
+
+    Heavy GWR preparation is performed by GitHub Actions and committed under
+    data/gwr_products. Production/Render only reads these versioned products.
+    """
+    path=Path(__file__).parent/"data"/"gwr_products"
     path.mkdir(parents=True,exist_ok=True)
     return path
 
