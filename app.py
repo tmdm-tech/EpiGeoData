@@ -1399,12 +1399,19 @@ def _scope_geojson_from_persisted(product: dict, display_ibge_codes: set[str] | 
     digest=hashlib.sha1(",".join(sorted(wanted)).encode("utf-8")).hexdigest()[:10]
     target=_runtime_gwr_dir()/f"{source.stem}_scope_{digest}.geojson"
     if not target.exists():
-        geo=gpd.read_file(source)
-        code_col="_ibge_code" if "_ibge_code" in geo.columns else ("code_muni" if "code_muni" in geo.columns else None)
-        if code_col is None: raise ValueError("Resultado GWR persistido sem código IBGE")
-        scoped=geo[geo[code_col].astype(str).str.replace(".0","",regex=False).isin(wanted)].copy()
-        if scoped.empty: raise ValueError("Recorte territorial sem municípios ajustados")
-        scoped.to_file(target,driver="GeoJSON")
+        # GeoJSON persisted products are already in EPSG:4674. Filtering their
+        # features directly avoids importing GeoPandas/OGR in the request path.
+        raw=json.loads(source.read_text(encoding="utf-8"))
+        features=raw.get("features") or []
+        scoped_features=[]
+        for feature in features:
+            props=feature.get("properties") or {}
+            code=props.get("_ibge_code",props.get("code_muni"))
+            if str(code).replace(".0","") in wanted:
+                scoped_features.append(feature)
+        if not scoped_features: raise ValueError("Recorte territorial sem municípios ajustados")
+        raw["features"]=scoped_features
+        target.write_text(json.dumps(raw,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
     published=_publish_runtime_artifact(target)
     return "/static/"+published.relative_to(Path(__file__).parent/"static").as_posix()
 
@@ -1453,6 +1460,51 @@ def gwr_readiness(disease_key: str, year: int):
     # INMET archive or construct a panel synchronously.
     return jsonify({"ready":False,"prepared":False,"year":year,"disease_key":disease_key,
                     "predictors":predictors,"reason":"produto científico ainda não pré-calculado"}),200
+
+
+@app.post("/api/series/preview")
+def preview_time_series():
+    """Fast, local-only temporal preview for the selected disease and territory."""
+    payload=request.get_json(silent=True) or {}
+    disease_key=str(payload.get("disease_key","esquistossomose")).strip()
+    years=sorted({int(y) for y in (payload.get("selected_years") or []) if str(y).isdigit()})
+    if not years:
+        years=list(range(2000,2027))
+    geres=str(payload.get("geres","ALL")).strip()
+    municipio_id=str(payload.get("municipio_id","")).strip().replace(".0","")
+
+    gdf,_,_,catalog,_=_load_pernambuco_cartography()
+    id_to_name={str(item["id"]).replace(".0",""):_normalize_municipio_key(item["nome"]) for item in catalog}
+    selected_names=None
+    scope="Pernambuco"
+    aggregation="media_municipal"
+    if geres and geres.upper() not in ("ALL","TODAS AS GERES"):
+        codes=_geres_codes(geres) or set()
+        selected_names={id_to_name[c] for c in codes if c in id_to_name}
+        scope=geres.upper()
+    if municipio_id:
+        name=id_to_name.get(municipio_id)
+        if not name:
+            return jsonify({"ok":False,"error":"Município IBGE não encontrado"}),404
+        selected_names={name}; scope=next((x["nome"] for x in catalog if str(x["id"]).replace(".0","")==municipio_id),municipio_id)
+        aggregation="valor_municipal"
+
+    points=[]
+    unavailable=[]
+    for year in years:
+        try:
+            values,_=_disease_year_by_ibge(disease_key,year)
+        except (ValueError,FileNotFoundError):
+            unavailable.append(year); continue
+        selected=[float(v) for name,v in values.items() if selected_names is None or _normalize_municipio_key(name) in selected_names]
+        if not selected:
+            unavailable.append(year); continue
+        value=selected[0] if aggregation=="valor_municipal" else sum(selected)/len(selected)
+        points.append({"year":year,"value":round(value,6),"n_municipios":len(selected)})
+    return jsonify({"ok":True,"disease_key":disease_key,"scope":scope,"aggregation":aggregation,
+                    "series":points,"years_unavailable":unavailable,
+                    "source":"arquivo epidemiológico DATASUS/TABNET versionado; sem consulta remota no clique",
+                    "cache_friendly":True}),200
 
 
 @app.post("/api/maps/gwr-runtime")
