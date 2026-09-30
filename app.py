@@ -1869,7 +1869,7 @@ def _prewarm_reference_gwr_products() -> None:
                 continue
             app.logger.info("GWR_PREWARM_START disease=%s year=%s predictors=%s",disease,year,predictors)
             product=prepare(disease,year,predictors,force=False)
-            app.logger.info("GWR_PREWARM_READY disease=%s year=%s predictors=%s records=%s",
+            app.logger.warning("GWR_PREWARM_READY disease=%s year=%s predictors=%s records=%s",
                             disease,year,predictors,product.get("records_used"))
     except Exception:
         app.logger.exception("GWR_PREWARM_FAILED")
