@@ -162,7 +162,12 @@ def load_pernambuco_municipalities() -> gpd.GeoDataFrame:
 
 
 def _normalize_ibge7(value: object) -> str | None:
-    text = re.sub(r"\D", "", str(value or ""))
+    # GeoPandas may expose an official 7-digit IBGE code as a numeric value
+    # such as 2600054.0. Removing every non-digit first would incorrectly
+    # produce eight digits (26000540) and force an unnecessary remote lookup.
+    raw=str(value or "").strip()
+    raw=re.sub(r"\.0+$","",raw)
+    text=re.sub(r"\D","",raw)
     return text if len(text) == 7 else None
 
 
