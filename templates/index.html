@@ -4134,16 +4134,27 @@
           if (!document.querySelector('link[data-epigeodata-leaflet]')) {
             const css = document.createElement("link");
             css.rel = "stylesheet";
-            css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+            css.href = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css";
             css.dataset.epigeodataLeaflet = "1";
             document.head.appendChild(css);
           }
-          const script = document.createElement("script");
-          script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-          script.crossOrigin = "";
-          script.onload = resolve;
-          script.onerror = () => reject(new Error("Leaflet indisponível"));
-          document.head.appendChild(script);
+          const sources = [
+            "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js",
+            "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          ];
+          const trySource = (index) => {
+            if (index >= sources.length) {
+              leafletLoadPromise = null;
+              reject(new Error("Leaflet indisponível"));
+              return;
+            }
+            const script = document.createElement("script");
+            script.src = sources[index];
+            script.onload = () => resolve();
+            script.onerror = () => { script.remove(); trySource(index + 1); };
+            document.head.appendChild(script);
+          };
+          trySource(0);
         });
         return leafletLoadPromise;
       }
@@ -4183,7 +4194,8 @@
               })
               .catch((error) => {
                 setMapLoading("", false);
-                updateRobotMessage("O mapa-base nao carregou agora; os controles continuam disponíveis.");
+                mapReadyPromise = null;
+                updateRobotMessage("O mapa-base não carregou. Tente novamente; a inicialização foi liberada para nova tentativa.");
                 reject(error);
               });
           };
