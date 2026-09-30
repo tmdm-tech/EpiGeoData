@@ -150,6 +150,7 @@ def generate_epidemiological_gwr_maps(
     save_joined_geodata: bool = True,
     *, analysis_year: int | None = None,
     display_ibge_codes: set[str] | list[str] | None = None,
+    render_maps: bool = True,
 ) -> EpidemiologicalGWROutput:
     """Fit and export GWR only after the provenance/coverage gate authorizes the panel."""
     import geopandas as gpd
@@ -188,13 +189,14 @@ def generate_epidemiological_gwr_maps(
         scope_signature=",".join(sorted(_normalize_ibge_code(code) for code in display_ibge_codes))
         scope_suffix="_scope_"+hashlib.sha1(scope_signature.encode("utf-8")).hexdigest()[:10]
     fields=["gwr_local_r2",*["gwr_"+v for v in independent_vars]]
-    for field in fields:
-        fig,ax=plt.subplots(figsize=(9,9))
-        plot_frame.plot(column=field,ax=ax,legend=True,cmap="viridis",edgecolor="0.55",linewidth=.35,
-                       scheme="quantiles" if plot_frame[field].nunique()>=n_classes else None,k=n_classes)
-        ax.set_axis_off(); ax.set_title(f"{title_prefix} | {analysis_year} | {field}")
-        path=out/f"gwr_{analysis_year}_{re.sub(r'[^A-Za-z0-9_-]+','_',field)}{scope_suffix}.png"
-        fig.savefig(path,dpi=dpi,bbox_inches="tight",facecolor="white"); plt.close(fig); map_paths[field]=path
+    if render_maps:
+        for field in fields:
+            fig,ax=plt.subplots(figsize=(9,9))
+            plot_frame.plot(column=field,ax=ax,legend=True,cmap="viridis",edgecolor="0.55",linewidth=.35,
+                           scheme="quantiles" if plot_frame[field].nunique()>=n_classes else None,k=n_classes)
+            ax.set_axis_off(); ax.set_title(f"{title_prefix} | {analysis_year} | {field}")
+            path=out/f"gwr_{analysis_year}_{re.sub(r'[^A-Za-z0-9_-]+','_',field)}{scope_suffix}.png"
+            fig.savefig(path,dpi=dpi,bbox_inches="tight",facecolor="white"); plt.close(fig); map_paths[field]=path
     joined_path=None
     if save_joined_geodata:
         joined_path=out/f"gwr_{analysis_year}_resultados.geojson"
