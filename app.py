@@ -1496,6 +1496,40 @@ def gwr_readiness(disease_key: str, year: int):
                     "predictors":predictors,"reason":"produto científico ainda não pré-calculado"}),200
 
 
+@app.post("/api/spatial/municipal-values")
+def spatial_municipal_values():
+    """Fast local municipal values for interactive spatial products; never imputes missing values."""
+    payload=request.get_json(silent=True) or {}
+    disease_key=str(payload.get("disease_key","esquistossomose")).strip()
+    years=sorted({int(y) for y in (payload.get("selected_years") or []) if str(y).isdigit()})
+    if not years:
+        return jsonify({"ok":False,"error":"Selecione ao menos um ano para o produto espacial"}),422
+    gdf,municipalities_geojson,_,catalog,_=_load_pernambuco_cartography()
+    per_year=[]
+    sources=[]
+    unavailable=[]
+    for year in years:
+        try:
+            values,source=_disease_year_by_ibge(disease_key,year)
+            per_year.append((year,values)); sources.append(source)
+        except (ValueError,FileNotFoundError):
+            unavailable.append(year)
+    if not per_year:
+        return jsonify({"ok":False,"error":"Nenhum valor municipal observado disponível para os anos selecionados","years_unavailable":unavailable}),422
+    rows=[]
+    for item in catalog:
+        name=_normalize_municipio_key(item["nome"])
+        observed=[float(values[name]) for _,values in per_year if name in values]
+        if observed:
+            rows.append({"ibge":str(item["id"]).replace(".0",""),"municipio":item["nome"],
+                         "value":sum(observed)/len(observed),"n_years":len(observed)})
+    return jsonify({"ok":True,"disease_key":disease_key,"years":[y for y,_ in per_year],
+                    "years_unavailable":unavailable,"aggregation":"media_dos_anos_observados_por_municipio",
+                    "municipal_values":rows,"municipalities_geojson":municipalities_geojson,
+                    "source":"DATASUS/TABNET versionado + malha municipal IBGE; sem imputação",
+                    "source_files":sorted(set(sources))}),200
+
+
 @app.post("/api/series/preview")
 def preview_time_series():
     """Fast, local-only temporal preview for the selected disease and territory."""
