@@ -1,0 +1,112 @@
+name: Prepare validated GWR products
+
+on:
+  workflow_dispatch:
+    inputs:
+      disease:
+        description: Disease dataset key
+        required: true
+        default: esquistossomose
+      year:
+        description: Analytical year
+        required: true
+        default: "2021"
+      predictors:
+        description: Space-separated predictors (temperatura precipitacao)
+        required: true
+        default: "temperatura precipitacao"
+  push:
+    branches: [main]
+    paths:
+      - "Esquistossomose.csv"
+      - "Dengue.csv"
+      - "scripts/precompute_gwr_products.py"
+      - "scripts/generate_epidemiological_gwr_maps.py"
+      - "data/municipios_pe_ibge.geojson"
+  schedule:
+    - cron: "17 5 1 * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gwr-products
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install scientific dependencies
+        run: pip install -r requirements.txt
+
+      - name: Resolve requested signature
+        id: sig
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "disease=${{ inputs.disease }}" >> "$GITHUB_OUTPUT"
+            echo "year=${{ inputs.year }}" >> "$GITHUB_OUTPUT"
+            echo "predictors=${{ inputs.predictors }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "disease=esquistossomose" >> "$GITHUB_OUTPUT"
+            echo "year=2021" >> "$GITHUB_OUTPUT"
+            echo "predictors=temperatura precipitacao" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare statewide validated GWR
+        run: |
+          python scripts/precompute_gwr_products.py \
+            --disease "${{ steps.sig.outputs.disease }}" \
+            --year "${{ steps.sig.outputs.year }}" \
+            --predictors ${{ steps.sig.outputs.predictors }} \
+            --force
+
+      - name: Validate committed product
+        shell: bash
+        run: |
+          test -d data/gwr_products
+          test -n "$(find data/gwr_products -name 'manifest_*.json' -print -quit)"
+          test -n "$(find data/gwr_products -name '*.geojson' -print -quit)"
+          test -n "$(find data/gwr_products -name '*.png' -print -quit)"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path("data/gwr_products")
+          manifests=list(root.glob("manifest_*.json"))
+          assert manifests, "manifesto GWR ausente"
+          for manifest in manifests:
+              data=json.loads(manifest.read_text(encoding="utf-8"))
+              assert data.get("records_used",0) >= 30
+              paths=[data["joined_geojson_file"], *data.get("map_files",{}).values()]
+              for rel in paths:
+                  p=Path(rel)
+                  assert not p.is_absolute(), f"caminho absoluto não portável: {p}"
+                  assert p.exists(), f"artefato ausente: {p}"
+          PY
+
+      - name: Commit versioned GWR products
+        shell: bash
+        run: |
+          git config user.name "epigeodata-gwr-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/gwr_products
+          if git diff --cached --quiet; then
+            echo "GWR products already current."
+            exit 0
+          fi
+          git commit -m "data: publish validated GWR products [skip gwr]"
+          git pull --rebase origin main
+          git push origin HEAD:main
