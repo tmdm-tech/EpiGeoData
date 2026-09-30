@@ -7,6 +7,8 @@ import argparse
 import re
 import sys
 import unicodedata
+import json
+from urllib.request import Request, urlopen
 from dataclasses import dataclass
 from functools import lru_cache
 from datetime import datetime
@@ -140,6 +142,18 @@ def load_pernambuco_municipalities() -> gpd.GeoDataFrame:
     municipalities["join_name"] = municipalities["name_muni"].map(normalize_text)
     code_col=next((col for col in ("code_muni","codigo_ibge","municipio_ibge","CD_MUN","CD_MUN_2024","geocodigo","ibge_code") if col in municipalities.columns),None)
     municipalities["codigo_ibge"] = municipalities[code_col].map(_normalize_ibge7) if code_col else None
+    if municipalities["codigo_ibge"].isna().any():
+        req=Request("https://servicodados.ibge.gov.br/api/v1/localidades/estados/26/municipios",
+                    headers={"User-Agent":"EpiGeoData/1.0 scientific-research"})
+        with urlopen(req,timeout=30) as response:
+            official=json.loads(response.read().decode("utf-8"))
+        official_by_name={normalize_text(item["nome"]):str(item["id"]) for item in official
+                          if item.get("nome") and re.fullmatch(r"\d{7}",str(item.get("id","")))}
+        missing=municipalities["codigo_ibge"].isna()
+        municipalities.loc[missing,"codigo_ibge"]=municipalities.loc[missing,"join_name"].map(official_by_name)
+    if municipalities["codigo_ibge"].isna().any():
+        missing_names=municipalities.loc[municipalities["codigo_ibge"].isna(),"name_muni"].head(8).tolist()
+        raise ValueError(f"IBGE não retornou código oficial para municípios da malha: {missing_names}")
     return municipalities.to_crs(TARGET_CRS)
 
 
