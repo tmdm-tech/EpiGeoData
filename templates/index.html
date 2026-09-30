@@ -1667,6 +1667,22 @@
       let gwrMarkerLayer = null;
       let lastProfessionalMapUrl = "";
       let pernambucoCartographyCache = null;
+      const localPreviewGeoJson = {
+        type: "FeatureCollection",
+        features: [{
+          type: "Feature",
+          properties: { name: "Pernambuco - prévia local" },
+          geometry: {
+            type: "Polygon",
+            coordinates: [[
+              [-41.35,-7.15],[-40.55,-7.25],[-39.70,-7.45],[-38.85,-7.65],
+              [-37.95,-7.85],[-37.05,-8.15],[-36.15,-8.45],[-35.25,-8.75],
+              [-34.85,-8.35],[-35.15,-7.75],[-36.05,-7.45],[-37.05,-7.25],
+              [-38.15,-7.05],[-39.25,-6.85],[-40.25,-6.75],[-41.35,-7.15]
+            ]]
+          }
+        }]
+      };
       const institutionalProfessionalMapTitle = "EpiGeoData | Mapa Coroplético Científico - Pernambuco";
       const preparedHeatmapInputName = "municpios_pe";
 
@@ -3282,23 +3298,16 @@
           "<span><strong>GERES:</strong> " + (activeGeres === "ALL" ? "Todas as GERES" : activeGeres) + "</span>" +
           "<span><strong>Municipio:</strong> " + municipio + "</span>" +
           "<span><strong>Metodo:</strong> " + describeMode(selectedDemoMode) + "</span>";
-        if (!options.render) {
-          demoCanvas.style.display = "none";
-          professionalMapPreview.classList.remove("visible");
-          demoMeta.innerHTML = "<span><strong>Status:</strong> seleção pronta. Clique em Gerar mapa sobreposto para visualizar.</span>";
-          return;
-        }
+        // The demonstrator is always a lightweight client-side preview.
+        // It must react to selections without triggering backend/network work.
         demoCanvas.style.display = "block";
-        if (currentMapGeoJson || getCurrentBaseFeatureCollection()) {
-          renderDemonstratorImage(reason, { mode: selectedDemoMode });
-        } else {
-          demoMeta.innerHTML = "<span><strong>Status:</strong> aguardando geometria do mapa para refletir a selecao</span>";
-        }
+        professionalMapPreview.classList.remove("visible");
+        renderDemonstratorImage(reason, { mode: selectedDemoMode, previewOnly: !options.render });
       }
 
       function renderDemonstratorImage(label, options = {}) {
         lastDemoLabel = label;
-        const featureCollection = currentMapGeoJson || getCurrentBaseFeatureCollection();
+        const featureCollection = currentMapGeoJson || getCurrentBaseFeatureCollection() || localPreviewGeoJson;
         if (!featureCollection || !featureCollection.features || featureCollection.features.length === 0) {
           if (!options.skipMeta) {
             demoMeta.innerHTML = "<span><strong>Status:</strong> sem geometrias para demonstrar</span>";
