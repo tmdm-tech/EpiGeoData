@@ -1398,7 +1398,7 @@
                 <div class="map-toolbar"><select id="baseMapSelect"><option value="osm">Ruas</option><option value="light">Claro</option><option value="topo">Topográfico</option></select><button class="secondary" id="fitPeBtn" type="button">Enquadrar PE</button><button class="secondary" id="printMapBtn" type="button">Imprimir</button><button class="secondary" id="shareMapBtn" type="button">Compartilhar seleção</button></div>
                 <div id="map" aria-label="Mapa de Pernambuco por GERES e municipio"></div>
                 <div class="layer-panel" id="layerPanel"><h3>Camadas ativas</h3><div id="activeLayerList"><small>As camadas geradas aparecerão aqui.</small></div><div class="layer-tools"><label>Opacidade<input id="layerOpacity" type="range" min="10" max="100" value="70"></label><label>Cor<input id="layerColor" type="color" value="#7646b8"></label></div></div>
-                <div class="map-loading" id="mapLoading">Carregando mapa em segundo plano...</div>
+                <div class="map-loading hidden" id="mapLoading" aria-hidden="true"></div>
               </div>
               <aside class="demo-panel" aria-label="Demonstrador de sobreposição em imagem">
                 <p class="demo-title">Demonstrador em Imagem (tempo real)</p>
@@ -1718,8 +1718,9 @@
       };
 
       function setMapLoading(message, visible) {
-        mapLoading.textContent = message;
+        mapLoading.textContent = visible ? message : "";
         mapLoading.classList.toggle("hidden", !visible);
+        mapLoading.setAttribute("aria-hidden", visible ? "false" : "true");
       }
 
       function animateRobot(animationType) {
@@ -4129,11 +4130,7 @@
               });
           };
 
-          if ("requestIdleCallback" in window) {
-            window.requestIdleCallback(start, { timeout: 1200 });
-          } else {
-            setTimeout(start, 120);
-          }
+          start();
         });
 
         return mapReadyPromise;
