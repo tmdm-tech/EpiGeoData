@@ -47,6 +47,14 @@ CLIMATE_LAYER_BINDINGS = {
     "relevo": "relevo",
 }
 
+# Local scientific readiness is intentionally stricter than file existence.
+# These two legacy GeoJSONs are retained only for audit/migration and must not
+# be exposed as official analytical layers until replaced by validated source data.
+CLIMATE_LAYER_VALIDATION = {
+    "cobertura_vegetal": {"validated": False, "reason": "camada local parcial (2 municípios) sem proveniência oficial por feição; substituir por produto PRODES/TerraBrasilis validado"},
+    "relevo": {"validated": False, "reason": "geometrias locais simplificadas não constituem TOPODATA oficial; substituir por DEM oficial e hidrografia validada"},
+}
+
 DISEASE_CATALOG = {
         "scz": {
             "display_name": "Sindrome Congenita da Zika",
@@ -1135,7 +1143,9 @@ def get_climate_layers(climate_type: str) -> tuple[dict, int]:
         return {"error": f"Tipo climático inválido. Use: {', '.join(valid_types)}"}, 400
     
     data_file = Path(__file__).parent / f"data/climaticas/{climate_type}.geojson"
-    
+    validation=CLIMATE_LAYER_VALIDATION.get(climate_type,{"validated":True})
+    if not validation.get("validated",True):
+        return {"error": f"Camada {climate_type} bloqueada para uso científico", "status":"aguardando_dado_oficial_validado", "reason":validation.get("reason")}, 409
     if not data_file.exists():
         return {"error": f"Dados não disponíveis para {climate_type}"}, 404
     
@@ -1169,11 +1179,14 @@ def list_climate_layers() -> tuple[dict, int]:
                 }
             )
 
+        validation=CLIMATE_LAYER_VALIDATION.get(climate_type,{"validated":True})
         item = {
             "tipo": climate_type,
             "layer": layer_name,
             "url": f"/api/climate-layers/{layer_name}",
-            "status": "disponivel" if file_path.exists() else "indisponivel",
+            "status": ("disponivel" if file_path.exists() else "indisponivel") if validation.get("validated",True) else "aguardando_dado_oficial_validado",
+            "scientific_validated": bool(validation.get("validated",True)),
+            "validation_note": validation.get("reason"),
             "sources": sources,
         }
         available.append(item)
