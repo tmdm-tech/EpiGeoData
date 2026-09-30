@@ -167,7 +167,10 @@ def generate_epidemiological_gwr_maps(
     table=pd.read_csv(tabular_data_path)
     municipalities=gpd.read_file(municipalities_path)
     data_col=data_ibge_column or "municipio_ibge"
-    shape_col=shape_ibge_column or ("code_muni" if "code_muni" in municipalities.columns else "municipio_ibge")
+    shape_candidates=[shape_ibge_column,"code_muni","codigo_ibge","municipio_ibge","CD_MUN","CD_MUN_2024","geocodigo","ibge_code"]
+    shape_col=next((col for col in shape_candidates if col and col in municipalities.columns),None)
+    if shape_col is None:
+        raise DataValidationError("Municipal geometry has no recognized official IBGE code field")
     joined=_validate_spatial_inputs(table,municipalities,year=analysis_year,dependent=dependent_var,
                                     predictors=independent_vars,table_code=data_col,shape_code=shape_col)
     projected,bw,result=_fit_validated_gwr(joined,dependent_var,independent_vars,target_crs)
