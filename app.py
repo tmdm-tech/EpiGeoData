@@ -14,8 +14,7 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
 from flask import Flask, jsonify, render_template, request, send_file
-import geopandas as gpd
-import pandas as pd
+from typing import Any
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from werkzeug.utils import secure_filename
@@ -337,7 +336,8 @@ def _get_datasus_live_status(disease_key: str) -> dict[str, object]:
 
 
 @lru_cache(maxsize=1)
-def _load_pernambuco_cartography() -> tuple[gpd.GeoDataFrame, dict, dict, list[dict[str, str]], Path]:
+def _load_pernambuco_cartography() -> tuple[Any, dict, dict, list[dict[str, str]], Path]:
+    import geopandas as gpd
     if not DEFAULT_PERNAMBUCO_CARTOGRAPHY.exists():
         raise FileNotFoundError(
             f"Cartografia de Pernambuco nao encontrada em {DEFAULT_PERNAMBUCO_CARTOGRAPHY.relative_to(Path(__file__).parent)}"
@@ -493,7 +493,8 @@ def _normalize_colname(value: str) -> str:
     return re.sub(r"[^a-z0-9_]+", "", str(value).strip().lower().replace(" ", "_"))
 
 
-def _read_table_preview(path: Path) -> pd.DataFrame:
+def _read_table_preview(path: Path) -> Any:
+    import pandas as pd
     if path.suffix.lower() in {".xlsx", ".xls"}:
         return pd.read_excel(path, nrows=5)
     return pd.read_csv(path, sep=None, engine="python", nrows=5)
@@ -569,6 +570,7 @@ def _validate_gwr_input_schema(
     if resolved_table_ibge is None:
         raise ValueError("Nao foi possivel detectar coluna IBGE no arquivo tabular.")
 
+    import geopandas as gpd
     municipalities_df = gpd.read_file(municipalities_path, rows=5)
     muni_cols = [str(col) for col in municipalities_df.columns]
     resolved_shape_ibge = None
@@ -1335,6 +1337,7 @@ def _disease_year_by_ibge(disease_key: str, year: int) -> tuple[dict[str,float],
     decode_error=None
     for encoding in ("utf-8-sig","latin-1","cp1252"):
         try:
+            import pandas as pd
             frame=pd.read_csv(csv_path,sep=";",skiprows=3,dtype=str,encoding=encoding)
             break
         except UnicodeDecodeError as exc:
@@ -1445,7 +1448,8 @@ def _scope_geojson_from_persisted(product: dict, display_ibge_codes: set[str] | 
     published=_publish_runtime_artifact(target)
     return "/static/"+published.relative_to(Path(__file__).parent/"static").as_posix()
 
-def _build_runtime_gwr_panel(disease_key: str, year: int, predictors: list[str]) -> tuple[pd.DataFrame,dict]:
+def _build_runtime_gwr_panel(disease_key: str, year: int, predictors: list[str]) -> tuple[Any,dict]:
+    import pandas as pd
     from scripts.generate_choropleth_brazil import load_pernambuco_municipalities, normalize_text
     allowed={"temperatura_media_c","precipitacao_anual_mm"}
     if not predictors or any(p not in allowed for p in predictors):
