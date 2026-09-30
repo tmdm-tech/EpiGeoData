@@ -1846,6 +1846,38 @@ def generate_epidemiological_gwr_maps_upload_api() -> tuple[dict, int]:
     return jsonify(response), 200
 
 
+def _prewarm_reference_gwr_products() -> None:
+    """Prepare the reference demonstrator GWR off the request path."""
+    try:
+        from scripts.precompute_gwr_products import prepare
+        signatures=[
+            ("esquistossomose",2021,["temperatura_media_c"]),
+            ("esquistossomose",2021,["precipitacao_anual_mm"]),
+            ("esquistossomose",2021,["temperatura_media_c","precipitacao_anual_mm"]),
+        ]
+        for disease,year,predictors in signatures:
+            if _load_persisted_gwr_product(disease,year,predictors):
+                continue
+            app.logger.info("GWR_PREWARM_START disease=%s year=%s predictors=%s",disease,year,predictors)
+            product=prepare(disease,year,predictors,force=False)
+            app.logger.info("GWR_PREWARM_READY disease=%s year=%s predictors=%s records=%s",
+                            disease,year,predictors,product.get("records_used"))
+    except Exception:
+        app.logger.exception("GWR_PREWARM_FAILED")
+
+
+def _start_gwr_prewarm() -> None:
+    # Gunicorn imports this module once per worker. The service currently uses
+    # one worker; the daemon keeps expensive preparation outside HTTP requests.
+    if os.environ.get("EPIGEODATA_DISABLE_GWR_PREWARM","").strip().lower() in {"1","true","yes"}:
+        return
+    import threading
+    threading.Thread(target=_prewarm_reference_gwr_products,name="gwr-prewarm",daemon=True).start()
+
+
+_start_gwr_prewarm()
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
 
