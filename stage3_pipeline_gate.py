@@ -48,7 +48,7 @@ def require_authorized_gwr(
         for prov in ("epidemiology_provenance","climate_provenance","territory_provenance"):
             if frame[prov].isna().any(): raise ModelNotAuthorized(f"Missing provenance: {prov}")
         gdf=gpd.read_file(geom_path)
-        code_col=next((x for x in ("code_muni","municipio_ibge","CD_MUN") if x in gdf.columns),None)
+        code_col=next((x for x in ("code_muni","codigo_ibge","municipio_ibge","CD_MUN","CD_MUN_2024","geocodigo","ibge_code") if x in gdf.columns),None)
         if not code_col: raise ModelNotAuthorized("Official geometry lacks municipality code")
         gcodes=gdf[code_col].astype(str).str.replace(r"\.0$","",regex=True)
         panel_codes=set(codes); geometry_codes=set(gcodes)
