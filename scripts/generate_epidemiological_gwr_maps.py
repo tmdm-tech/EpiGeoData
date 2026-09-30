@@ -127,7 +127,7 @@ def _fit_validated_gwr(joined, dependent: str, predictors: list[str], target_crs
             raise DataValidationError(f"Nonfinite GWR diagnostic: {name}")
     if not np.isfinite(float(result.aicc)):
         raise DataValidationError("Nonfinite AICc")
-    if len(independent_vars) >= 2 and hasattr(result, "local_collinearity"):
+    if len(predictors) >= 2 and hasattr(result, "local_collinearity"):
         diagnostics = result.local_collinearity()
         if diagnostics is not None:
             local_conditions = np.asarray(diagnostics[-1], dtype=float)
