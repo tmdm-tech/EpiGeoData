@@ -1301,7 +1301,16 @@ def _disease_year_by_ibge(disease_key: str, year: int) -> tuple[dict[str,float],
     from scripts.generate_choropleth_brazil import resolve_disease_csv, normalize_text
     resolved,csv_path=resolve_disease_csv(disease_key)
     if csv_path is None: raise FileNotFoundError(f"Sem CSV epidemiológico local para {resolved}")
-    frame=pd.read_csv(csv_path,sep=";",skiprows=3,dtype=str,encoding="utf-8-sig")
+    frame=None
+    decode_error=None
+    for encoding in ("utf-8-sig","latin-1","cp1252"):
+        try:
+            frame=pd.read_csv(csv_path,sep=";",skiprows=3,dtype=str,encoding=encoding)
+            break
+        except UnicodeDecodeError as exc:
+            decode_error=exc
+    if frame is None:
+        raise UnicodeDecodeError("epidemiology",b"",0,1,f"Não foi possível decodificar {csv_path}: {decode_error}")
     year_col=str(year)
     if year_col not in frame.columns: raise ValueError(f"{resolved}: ano {year} indisponível")
     name_col=frame.columns[0]
