@@ -943,26 +943,43 @@ def get_datasus_catalog() -> tuple[dict, int]:
     ), 200
 
 
+@lru_cache(maxsize=1)
+def _load_pernambuco_cartography_lightweight() -> tuple[dict, dict, list[dict[str, str]], Path]:
+    """Load startup cartography with stdlib JSON only; no GeoPandas/OGR startup cost."""
+    if not DEFAULT_PERNAMBUCO_CARTOGRAPHY.exists():
+        raise FileNotFoundError(f"Cartografia de Pernambuco nao encontrada em {DEFAULT_PERNAMBUCO_CARTOGRAPHY}")
+    raw=json.loads(DEFAULT_PERNAMBUCO_CARTOGRAPHY.read_text(encoding="utf-8"))
+    features=raw.get("features") or []
+    catalog=[]
+    for feature in features:
+        props=feature.get("properties") or {}
+        code=_normalize_ibge_code(props.get("code_muni") or props.get("id") or "")
+        name=str(props.get("name_muni") or props.get("nome") or "").strip()
+        if code and name: catalog.append({"id":code,"nome":name})
+    # State outline is optional at startup. Using municipality features as a
+    # FeatureCollection lets Leaflet derive Pernambuco bounds without dissolve().
+    state={"type":"FeatureCollection","features":features}
+    catalog.sort(key=lambda item:item["nome"])
+    return raw,state,catalog,DEFAULT_PERNAMBUCO_CARTOGRAPHY
+
+
 @app.get("/api/cartography/pernambuco")
 def get_pernambuco_cartography() -> tuple[dict, int]:
     try:
-        gdf, municipalities_geojson, state_geojson, catalog, source_path = _load_pernambuco_cartography()
+        municipalities_geojson, state_geojson, catalog, source_path = _load_pernambuco_cartography_lightweight()
     except FileNotFoundError as error:
         return {"error": str(error)}, 404
 
-    return jsonify(
-        {
-            "ok": True,
-            "source": str(source_path.relative_to(Path(__file__).parent)),
-            "summary": {
-                "total_municipios": int(len(gdf)),
-                "crs": str(gdf.crs),
-            },
-            "state": state_geojson,
-            "municipalities": municipalities_geojson,
-            "catalog": catalog,
-        }
-    ), 200
+    response=jsonify({
+        "ok":True,
+        "source":str(source_path.relative_to(Path(__file__).parent)),
+        "summary":{"total_municipios":len(catalog),"crs":"EPSG:4674"},
+        "state":state_geojson,
+        "municipalities":municipalities_geojson,
+        "catalog":catalog,
+    })
+    response.headers["Cache-Control"]="public, max-age=86400, immutable"
+    return response,200
 
 
 @app.get("/api/cartography/pernambuco/municipios/<ibge_code>")
