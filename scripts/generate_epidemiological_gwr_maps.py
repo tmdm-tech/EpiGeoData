@@ -127,12 +127,14 @@ def _fit_validated_gwr(joined, dependent: str, predictors: list[str], target_crs
             raise DataValidationError(f"Nonfinite GWR diagnostic: {name}")
     if not np.isfinite(float(result.aicc)):
         raise DataValidationError("Nonfinite AICc")
-    if hasattr(result, "local_collinearity"):
+    if len(independent_vars) >= 2 and hasattr(result, "local_collinearity"):
         diagnostics = result.local_collinearity()
         if diagnostics is not None:
             local_conditions = np.asarray(diagnostics[-1], dtype=float)
             if not np.isfinite(local_conditions).all() or (local_conditions > 30).any():
                 raise DataValidationError("Local GWR collinearity exceeds threshold")
+    # For a single predictor there is no multivariate local-collinearity
+    # matrix; standardized global rank/condition diagnostics remain valid.
     return projected, float(bandwidth), result
 
 
