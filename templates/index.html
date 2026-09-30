@@ -763,12 +763,25 @@
 
       #map {
         width: 100%;
-        height: 560px;
+        height: 420px;
         border-radius: 14px;
         border: 1px solid rgba(77, 56, 114, 0.28);
         overflow: hidden;
         filter: brightness(0.94) contrast(1.1) saturate(0.92);
-        background: #151525;
+        background:
+          radial-gradient(circle at 50% 42%, rgba(118,70,184,.16), transparent 42%),
+          linear-gradient(155deg, #121020, #181327);
+      }
+      #map:empty::before {
+        content: "Mapa interativo pronto para a seleção";
+        min-height: inherit;
+        height: 100%;
+        display: grid;
+        place-items: center;
+        padding: 20px;
+        text-align: center;
+        color: rgba(239,227,255,.72);
+        font-size: 12px;
       }
 
       .leaflet-container {
@@ -1110,11 +1123,34 @@
         }
 
         #map {
-          height: 280px;
+          height: 190px;
+          min-height: 190px;
         }
 
+        .map-toolbar {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+        }
+        .map-toolbar select,
+        .map-toolbar button {
+          width: 100%;
+          min-width: 0;
+        }
+        .layer-panel {
+          margin-top: 10px;
+        }
+        .layer-tools {
+          grid-template-columns: 1fr;
+        }
+        .demo-panel {
+          margin-top: 2px;
+          padding: 10px;
+        }
         #demoCanvas {
-          height: 300px;
+          height: auto;
+          aspect-ratio: 16 / 9;
+          max-height: none;
         }
       }
 
@@ -1403,7 +1439,8 @@
                     <option value="heat">Mapa de calor</option>
                     <option value="kernel">Kernel</option>
                     <option value="density">Densidade</option>
-                    <option value="moran">Moran local</option>\n                    <option value="series">Série temporal</option>
+                    <option value="moran">Moran local</option>
+                    <option value="series">Série temporal</option>
                   </select>
                   <button class="secondary" id="downloadProfessionalMapBtn">Baixar mapa cartográfico (300 dpi)</button>
                   <button class="secondary" id="downloadDemoImageBtn">Baixar imagem demonstrador (HD)</button>
