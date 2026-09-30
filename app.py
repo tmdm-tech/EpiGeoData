@@ -1229,10 +1229,18 @@ def _inmet_annual_station_summary(year: int) -> list[dict]:
         return cached[1]["rows"]
     url=f"https://portal.inmet.gov.br/uploads/dadoshistoricos/{year}.zip"
     req=Request(url,headers={"User-Agent":"EpiGeoData/1.0 scientific-research"})
-    with urlopen(req,timeout=45) as response:
-        payload=response.read()
-    rows=[]
-    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+    # Stream the annual archive to disk instead of holding the full ZIP in RAM.
+    # This prevents Render's small worker from being killed while preparing GWR.
+    import tempfile, shutil
+    tmp_path=None
+    try:
+        with tempfile.NamedTemporaryFile(prefix=f"inmet_{year}_",suffix=".zip",delete=False) as tmp:
+            tmp_path=Path(tmp.name)
+            with urlopen(req,timeout=90) as response:
+                shutil.copyfileobj(response,tmp,length=1024*1024)
+        rows=[]
+        archive_ctx=zipfile.ZipFile(tmp_path)
+        with archive_ctx as archive:
         for name in archive.namelist():
             upper=unicodedata.normalize("NFKD",name).encode("ascii","ignore").decode("ascii").upper()
             if "_PE_" not in upper or not upper.endswith(".CSV"):
@@ -1282,6 +1290,10 @@ def _inmet_annual_station_summary(year: int) -> list[dict]:
                 rows.append({"estacao":station,"lat":lat,"lon":lon,"precipitacao_anual_mm":sum(rain) if rain else None,
                              "temperatura_media_c":sum(temp)/len(temp) if temp else None,
                              "n_precipitacao":len(rain),"n_temperatura":len(temp),"source_url":url})
+    finally:
+        if tmp_path is not None:
+            try: tmp_path.unlink(missing_ok=True)
+            except OSError: pass
     if not rows: raise RuntimeError(f"INMET não retornou estações automáticas de PE para {year}")
     REALTIME_CACHE[key]=(time.time(),{"rows":rows})
     return rows
