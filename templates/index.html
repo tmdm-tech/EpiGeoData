@@ -2738,57 +2738,8 @@
         return "rgb(" + r + "," + g + "," + b + ")";
       }
 
-      async function buildGwrOverlayData(featureCollection) {
-        const diseaseKey = resolveDiseaseApiKey(selectedDisease.name);
-        const rows = [];
-
-        for (const feature of featureCollection.features) {
-          const municipio = getFeatureMunicipioName(feature) || "Município PE";
-          const [lon, lat] = getFeatureCentroidLonLat(feature);
-          const realtime = await fetchRealtimeMunicipio(municipio, lat, lon);
-          const climate = realtime.clima_ambiente || {};
-          const datasusAgravos = (realtime.datasus && realtime.datasus.agravos) || {};
-          const diseaseRaw = Number(datasusAgravos[diseaseKey]);
-          const fallbackDisease = diseaseMunicipioValues.get(normalizeName(municipio));
-
-          rows.push({
-            municipio,
-            feature,
-            lat,
-            lon,
-            chuva: Number(climate.pluviosidade_mm_h) || 0,
-            temperatura: Number(climate.temperatura_c) || 27,
-            vegetacao: Number(climate.cobertura_vegetal_idx) || 0.5,
-            relevo: Number(climate.relevo_elevacao_m) || 250,
-            hidro: Number(climate.hidrografia_proximidade_idx) || 0.5,
-            disease: Number.isFinite(diseaseRaw) ? diseaseRaw : (Number.isFinite(fallbackDisease) ? fallbackDisease : 0)
-          });
-        }
-
-        const diseaseVals = rows.map((r) => r.disease);
-        const rainVals = rows.map((r) => r.chuva);
-        const tempVals = rows.map((r) => r.temperatura);
-
-        const dMin = Math.min(...diseaseVals, 0);
-        const dMax = Math.max(...diseaseVals, 1);
-        const pMin = Math.min(...rainVals, 0);
-        const pMax = Math.max(...rainVals, 1);
-        const tMin = Math.min(...tempVals, 20);
-        const tMax = Math.max(...tempVals, 35);
-
-        rows.forEach((row) => {
-          const y = norm(row.disease, dMin, dMax);
-          const xRain = norm(row.chuva, pMin, pMax);
-          const xTemp = norm(row.temperatura, tMin, tMax);
-          const xVeg = clamp01(row.vegetacao);
-          const xRelief = 1 - clamp01(row.relevo / 1200);
-          const xHydro = clamp01(row.hidro);
-
-          const gwr = clamp01(y * 0.38 + xRain * 0.2 + xTemp * 0.12 + xVeg * 0.14 + xRelief * 0.08 + xHydro * 0.08);
-          row.gwrScore = gwr;
-        });
-
-        return rows;
+      async function buildGwrOverlayData() {
+        throw new Error("GWR sintético desativado: use somente /api/maps/gwr-runtime com produto persistido validado.");
       }
 
       function renderGwrMode(ctx, projected) {
