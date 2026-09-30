@@ -1495,6 +1495,7 @@ def generate_maps_by_geres():
     climates=list(payload.get("selected_climates") or [])
     results={}
     errors={}
+
     if mode=="gwr":
         if len(years)!=1:
             return jsonify({"ok":False,"error":"GWR por GERES exige exatamente um ano analítico"}),422
@@ -1510,26 +1511,47 @@ def generate_maps_by_geres():
         for geres_name in GERES_MUNICIPALITIES:
             try:
                 codes=_geres_codes(geres_name)
-                results[geres_name]={"joined_geojson":_scope_geojson_from_persisted(product,codes),
-                    "bandwidth":product.get("bandwidth"),"records_used":product.get("records_used"),
-                    "records_displayed":len(codes or [])}
-            except Exception as exc: errors[geres_name]=str(exc)
-        return jsonify({"ok":bool(results),"analysis_mode":"gwr","disease_key":disease_key,
-                        "selected_years":years,"selected_climates":climates,
-                        "maps_by_geres":results,"errors":errors,
-                        "generated":len(results),"requested":len(GERES_MUNICIPALITIES),
-                        "persisted":True}),200 if results else 422
-            else:
-                from scripts.generate_choropleth_brazil import generate_professional_choropleth
-                result=generate_professional_choropleth(disease_key=disease_key,analysis_mode=mode,
-                    selected_years=years,selected_climates=climates,geres=geres_name,dpi=300)
-                results[geres_name]={"image_url":f"/static/maps/{result.output_file.name}","variable":result.variable_label}
+                results[geres_name]={
+                    "joined_geojson":_scope_geojson_from_persisted(product,codes),
+                    "bandwidth":product.get("bandwidth"),
+                    "records_used":product.get("records_used"),
+                    "records_displayed":len(codes or []),
+                }
+            except Exception as exc:
+                errors[geres_name]=str(exc)
+        return jsonify({
+            "ok":bool(results),"analysis_mode":"gwr","disease_key":disease_key,
+            "selected_years":years,"selected_climates":climates,
+            "maps_by_geres":results,"errors":errors,
+            "generated":len(results),"requested":len(GERES_MUNICIPALITIES),
+            "persisted":True,
+        }),200 if results else 422
+
+    from scripts.generate_choropleth_brazil import generate_professional_choropleth
+    for geres_name in GERES_MUNICIPALITIES:
+        try:
+            result=generate_professional_choropleth(
+                disease_key=disease_key,
+                analysis_mode=mode,
+                selected_years=years,
+                selected_climates=climates,
+                geres=geres_name,
+                dpi=300,
+            )
+            results[geres_name]={
+                "image_url":f"/static/maps/{result.output_file.name}",
+                "variable":result.variable_label,
+            }
         except Exception as exc:
             errors[geres_name]=str(exc)
+
     status=200 if results else 422
-    return jsonify({"ok":bool(results),"analysis_mode":mode,"disease_key":disease_key,
-                    "selected_years":years,"selected_climates":climates,"maps_by_geres":results,
-                    "errors":errors,"generated":len(results),"requested":len(GERES_MUNICIPALITIES)}),status
+    return jsonify({
+        "ok":bool(results),"analysis_mode":mode,"disease_key":disease_key,
+        "selected_years":years,"selected_climates":climates,
+        "maps_by_geres":results,"errors":errors,
+        "generated":len(results),"requested":len(GERES_MUNICIPALITIES),
+    }),status
 
 
 @app.post("/api/maps/professional-overlay")
