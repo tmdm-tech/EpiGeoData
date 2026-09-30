@@ -138,10 +138,8 @@ def load_pernambuco_municipalities() -> gpd.GeoDataFrame:
     municipalities = gpd.read_file(CARTOGRAPHY_PATH)
     municipalities = municipalities.copy()
     municipalities["join_name"] = municipalities["name_muni"].map(normalize_text)
-    if "code_muni" in municipalities.columns:
-        municipalities["codigo_ibge"] = municipalities["code_muni"].map(_normalize_ibge7)
-    else:
-        municipalities["codigo_ibge"] = None
+    code_col=next((col for col in ("code_muni","codigo_ibge","municipio_ibge","CD_MUN","CD_MUN_2024","geocodigo","ibge_code") if col in municipalities.columns),None)
+    municipalities["codigo_ibge"] = municipalities[code_col].map(_normalize_ibge7) if code_col else None
     return municipalities.to_crs(TARGET_CRS)
 
 
