@@ -1711,6 +1711,7 @@
       const diseaseDataCache = new Map();
       let currentMapGeoJson = null;
       let lastTemporalSeries = null;
+      let spatialMunicipalPayload = null;
       let lastDemoImageDataUrl = "";
       let lastDemoLabel = "camada inicial";
       let selectedDemoMode = "gwr";
@@ -2839,6 +2840,18 @@
         return Math.sqrt(dx * dx + dy * dy);
       }
 
+      async function loadSpatialMunicipalObservations() {
+        const body={disease_key:resolveDiseaseApiKey(selectedDisease.name),selected_years:Array.from(selectedYears).map(Number).filter(Number.isFinite)};
+        const response=await fetch("/api/spatial/municipal-values",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+        const payload=await response.json();
+        if(!response.ok) throw new Error(payload?.error||"Dados municipais indisponíveis");
+        spatialMunicipalPayload=payload;
+        diseaseMunicipioValues.clear();
+        (payload.municipal_values||[]).forEach(row=>{const v=Number(row.value);if(Number.isFinite(v))diseaseMunicipioValues.set(normalizeName(row.municipio),v);});
+        if(payload.municipalities_geojson) currentMapGeoJson=payload.municipalities_geojson;
+        return payload;
+      }
+
       function buildProjectedSpatialData(featureCollection, width, height) {
         const allPoints = featureCollection.features.flatMap((feature) => flattenCoordinates(feature.geometry));
         if (allPoints.length === 0) {
@@ -2891,10 +2904,8 @@
         const dRange = Math.max(dMax - dMin, 1);
 
         const socioValues = Array.from(socioMunicipioValues.values()).map((item) => item.value).filter((value) => Number.isFinite(value));
-        const socioMean = socioValues.length > 0 ? socioValues.reduce((acc, n) => acc + n, 0) / socioValues.length : 55;
-        const socioNormBase = clamp01((socioMean % 100) / 100);
-        const diseaseBase = clamp01(resolveDiseaseScore() / 100);
-        const climateBase = clamp01(Array.from(selectedClimates).reduce((acc, climate) => acc + (climateWeight[climate] || 0), 0) / 100);
+        const socioMin = socioValues.length ? Math.min(...socioValues) : null;
+        const socioMax = socioValues.length ? Math.max(...socioValues) : null;
 
         const features = featureCollection.features.map((feature, idx) => {
           const rings = polygonRings(feature.geometry).map((ring) => ring.map(project));
@@ -2907,10 +2918,13 @@
           const diseaseVal = featureDiseaseMap.get(idx);
           const diseaseNorm = diseaseVal !== null ? clamp01((diseaseVal - dMin) / dRange) : null;
 
-          const noise = ((idx * 37 + 13) % 100) / 100;
-          const diseaseIntensity = diseaseNorm !== null ? diseaseNorm : clamp01(diseaseBase * 0.63 + socioNormBase * 0.22 + noise * 0.15);
-          const climateIntensity = clamp01(climateBase * 0.68 + (1 - socioNormBase) * 0.2 + (1 - noise) * 0.12);
-          const combinedIntensity = clamp01(diseaseIntensity * 0.58 + climateIntensity * 0.42);
+          const diseaseIntensity = diseaseNorm;
+          const socioRaw = socioMunicipioValues.get(normalizeName(getFeatureMunicipioName(feature)))?.value;
+          const socioIntensity = Number.isFinite(socioRaw) && Number.isFinite(socioMin) && Number.isFinite(socioMax)
+            ? norm(socioRaw,socioMin,socioMax) : null;
+          const validComponents=[diseaseIntensity,socioIntensity].filter(Number.isFinite);
+          const combinedIntensity=validComponents.length?validComponents.reduce((a,b)=>a+b,0)/validComponents.length:null;
+          const climateIntensity = null;
 
           return {
             rings,
@@ -2921,6 +2935,7 @@
             diseaseIntensity,
             climateIntensity,
             combinedIntensity,
+            socioIntensity,
             gwrLocalR2: Number.isFinite(Number(feature?.properties?.gwr_local_r2)) ? Number(feature.properties.gwr_local_r2) : null,
             gwrProperties: feature?.properties || {}
           };
@@ -3033,7 +3048,9 @@
 
       function drawGaussianField(ctx, points, colorStops, radiusPx, alphaScale, getter) {
         points.forEach((point) => {
-          const intensity = clamp01(getter(point));
+          const rawIntensity=getter(point);
+          if(!Number.isFinite(rawIntensity)) return;
+          const intensity = clamp01(rawIntensity);
           if (intensity <= 0.01) {
             return;
           }
@@ -3925,12 +3942,21 @@
           return;
         }
 
-        await loadDiseaseDataForSelection();
+        const activeMode = selectedDemoMode || "overlay";
+        if (activeMode === "gwr" || activeMode === "series") {
+          await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
+          return;
+        }
+        await loadSpatialMunicipalObservations();
         await ensureMapReady();
         clearOverlayLayer();
-        const base = getCurrentBaseFeatureCollection() || featureCollectionFromGeoJson(estadoGeoCache);
-        const gwrRows = await buildGwrOverlayData(base);
-        const activeMode = selectedDemoMode || "overlay";
+        const base = currentMapGeoJson || getCurrentBaseFeatureCollection() || featureCollectionFromGeoJson(estadoGeoCache);
+        currentMapGeoJson = base;
+        refreshDemonstratorFromSelection("produto espacial observado",{render:true});
+        const gwrRows = [];
+
+        updateRobotMessage("Produto " + describeMode(activeMode) + " atualizado com observações municipais disponíveis, sem imputação.");
+        return;
         const byMunicipio = new Map(gwrRows.map((row) => [normalizeName(row.municipio), row]));
 
         const values = gwrRows.map((row) => row.gwrScore);
