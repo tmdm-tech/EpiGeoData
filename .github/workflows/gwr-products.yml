@@ -69,6 +69,26 @@ jobs:
           fi
 
       - name: Prepare statewide validated GWR
+        shell: bash
+        run: |
+          set -e
+          for attempt in 1 2 3; do
+            if python scripts/precompute_gwr_products.py \
+              --disease "${{ steps.sig.outputs.disease }}" \
+              --year "${{ steps.sig.outputs.year }}" \
+              --predictors ${{ steps.sig.outputs.predictors }} \
+              --force; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Official INMET endpoint unavailable on attempt $attempt; retrying in 30s..."
+              sleep 30
+            fi
+          done
+          exit 1
+
+      - name: Legacy prepare command disabled
+        if: ${{ false }}
         run: |
           python scripts/precompute_gwr_products.py \
             --disease "${{ steps.sig.outputs.disease }}" \
