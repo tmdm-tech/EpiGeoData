@@ -23,6 +23,7 @@ on:
       - "scripts/precompute_gwr_products.py"
       - "scripts/generate_epidemiological_gwr_maps.py"
       - "data/municipios_pe_ibge.geojson"
+      - ".github/workflows/gwr-products.yml"
   schedule:
     - cron: "17 5 1 * *"
 
