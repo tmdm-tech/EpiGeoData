@@ -144,7 +144,7 @@ def load_pernambuco_municipalities() -> gpd.GeoDataFrame:
     municipalities["codigo_ibge"] = municipalities[code_col].map(_normalize_ibge7) if code_col else None
     if municipalities["codigo_ibge"].isna().any():
         req=Request("https://servicodados.ibge.gov.br/api/v1/localidades/estados/26/municipios",
-                    headers={"User-Agent":"EpiGeoData/1.0 scientific-research"})
+                    headers={"User-Agent":"EpiGeoData/1.0 scientific-research","Accept-Encoding":"identity"})
         with urlopen(req,timeout=30) as response:
             official=json.loads(response.read().decode("utf-8"))
         official_by_name={normalize_text(item["nome"]):str(item["id"]) for item in official
