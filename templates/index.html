@@ -4419,12 +4419,16 @@
       async function downloadProfessionalMapFromBackend() {
         // O download deve ser exatamente o mapa produzido pela selecao atual,
         // e nao uma segunda renderizacao generica da rota /download.
+        if (!["gwr","series"].includes(selectedDemoMode)) {
+          if (!lastDemoImageDataUrl) renderDemonstratorImage("produto espacial observado",{mode:selectedDemoMode});
+          if (!lastDemoImageDataUrl) throw new Error("Produto espacial ainda não gerado.");
+          downloadDataUrlFile(lastDemoImageDataUrl,"mapa_"+resolveDiseaseApiKey(selectedDisease.name)+"_"+selectedDemoMode+".png");
+          return;
+        }
         if (!lastProfessionalMapUrl || lastProfessionalMapSignature !== currentProfessionalMapSignature()) {
           await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
         }
-        if (!lastProfessionalMapUrl) {
-          throw new Error("O backend nao entregou o mapa cartografico da selecao atual.");
-        }
+        if (!lastProfessionalMapUrl) throw new Error("O backend não entregou produto persistido para esta seleção.");
         const diseaseKey = resolveDiseaseApiKey(selectedDisease.name);
         const safeMode = String(selectedDemoMode || "overlay").replace(/[^a-z0-9_-]+/gi, "_");
         await downloadBlobFile(
