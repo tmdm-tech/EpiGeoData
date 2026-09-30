@@ -4,7 +4,7 @@ services:
   - type: web
     name: epigeodata
     env: python
-    buildCommand: pip install -r requirements.txt && python -m py_compile app.py scripts/precompute_gwr_products.py scripts/generate_epidemiological_gwr_maps.py
+    buildCommand: pip install -r requirements.txt && python -m py_compile app.py scripts/precompute_gwr_products.py scripts/generate_epidemiological_gwr_maps.py && python scripts/precompute_gwr_products.py --disease esquistossomose --year 2021 --predictors temperatura precipitacao
     startCommand: gunicorn wsgi_catalog:app --bind 0.0.0.0:$PORT
     plan: free
     healthCheckPath: /
