@@ -4,19 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>EpiGeoData</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://servicodados.ibge.gov.br" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Ruda:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-      crossorigin=""
-    />
     <style>
       :root {
           --bg-1: #050010;
@@ -1487,11 +1475,6 @@
       </div>
     </div>
 
-    <script
-      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-      crossorigin=""
-    ></script>
     <script>
       const statusBox = document.getElementById("statusBox");
       const speechBox = document.getElementById("speechBox");
@@ -4091,6 +4074,28 @@
         applyMunicipioFilters();
       }
 
+      let leafletLoadPromise = null;
+      function loadLeafletOnDemand() {
+        if (window.L && typeof window.L.map === "function") return Promise.resolve();
+        if (leafletLoadPromise) return leafletLoadPromise;
+        leafletLoadPromise = new Promise((resolve, reject) => {
+          if (!document.querySelector('link[data-epigeodata-leaflet]')) {
+            const css = document.createElement("link");
+            css.rel = "stylesheet";
+            css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+            css.dataset.epigeodataLeaflet = "1";
+            document.head.appendChild(css);
+          }
+          const script = document.createElement("script");
+          script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+          script.crossOrigin = "";
+          script.onload = resolve;
+          script.onerror = () => reject(new Error("Leaflet indisponível"));
+          document.head.appendChild(script);
+        });
+        return leafletLoadPromise;
+      }
+
       function waitForLeaflet(timeoutMs = 5000) {
         const start = Date.now();
         return new Promise((resolve, reject) => {
@@ -4117,7 +4122,8 @@
         mapReadyPromise = new Promise((resolve, reject) => {
           const start = () => {
             setMapLoading("Carregando mapa...", true);
-            waitForLeaflet()
+            loadLeafletOnDemand()
+              .then(() => waitForLeaflet())
               .then(() => loadPernambucoBase())
               .then(() => {
                 setMapLoading("", false);
@@ -4150,7 +4156,6 @@
             note: button.dataset.note
           };
 
-          await loadDiseaseDataForSelection();
           updateSelectionStatus();
           updateRobotMessage(
             "Doenca ativa: <b>" +
@@ -4158,10 +4163,7 @@
               "</b> (" +
               selectedDisease.agent +
               "). " +
-              selectedDisease.note +
-              "<br/><small>Fonte para análise: " +
-              diseaseDataSource +
-              "</small>"
+              selectedDisease.note
           );
           refreshDemonstratorFromSelection("agravo atualizado");
           await autoGenerateIfReady();
@@ -4261,7 +4263,6 @@
       geresSelect.addEventListener("change", async () => {
         activeGeres = geresSelect.value;
         applyMunicipioFilters();
-        await drawGeres(activeGeres);
         robotWiggleEarring();
         updateSelectionStatus();
         refreshDemonstratorFromSelection("GERES atualizada");
@@ -4275,7 +4276,6 @@
       municipioSelect.addEventListener("change", async () => {
         const municipioId = municipioSelect.value;
         const municipioLabel = municipioSelect.options[municipioSelect.selectedIndex]?.text || "";
-        await drawMunicipioById(municipioId, municipioLabel);
         updateSelectionStatus();
         refreshDemonstratorFromSelection("municipio atualizado");
         if (municipioId) {
@@ -4301,10 +4301,8 @@
       downloadDemoImageBtn.addEventListener("click", async () => {
         try {
           if (!lastDemoImageDataUrl) {
-            const climateLabel = Array.from(selectedClimates).join(" + ") || "Clima";
-            const geresLabel = activeGeres === "ALL" ? "PE" : activeGeres;
-            const overlayName = climateLabel + " x " + selectedDisease.name + " : " + geresLabel;
-            renderDemonstratorImage("GWR - " + overlayName, { mode: selectedDemoMode || "gwr" });
+            updateRobotMessage("Gere primeiro o mapa para criar a imagem HD do demonstrador.");
+            return;
           }
 
           if (!lastDemoImageDataUrl) {
