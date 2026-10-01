@@ -35,7 +35,16 @@ permissions:
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        years:
+          - "2001 2002 2003 2004 2005 2006"
+          - "2007 2008 2009 2010 2011 2012"
+          - "2013 2014 2015 2016 2017 2018"
+          - "2019 2020 2021 2022 2023 2024"
+          - "2025 2026"
     concurrency:
       group: gwr-products-prepare
       cancel-in-progress: true
@@ -59,7 +68,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          python scripts/precompute_gwr_products.py --all
+          python scripts/precompute_gwr_products.py --all --years ${{ matrix.years }}
 
       - name: Validate canonical geospatial dimensions
         shell: bash
@@ -86,6 +95,27 @@ jobs:
           print("validated climate years",len(manifests))
           PY
 
+      - name: Upload scientific cube shard
+        uses: actions/upload-artifact@v4
+        with:
+          name: climate-cube-${{ strategy.job-index }}
+          path: |
+            data/climaticas/painel_climatico_pe_*.csv
+            data/climaticas/manifest_climatico_pe_*.json
+          retention-days: 1
+
+  publish:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: climate-cube-*
+          path: data/climaticas
+          merge-multiple: true
       - name: Commit versioned scientific cube
         shell: bash
         run: |
