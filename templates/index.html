@@ -2493,15 +2493,12 @@
           return;
         }
 
-        if (currentMode !== "gwr") {
-          throw new Error("Renderer profissional legado desativado para este método.");
-        }
         if (professionalMapAbortController) professionalMapAbortController.abort();
         const controller = new AbortController();
         professionalMapAbortController = controller;
 
         try {
-          const endpoint = "/api/maps/gwr-runtime";
+          const endpoint = currentMode === "gwr" ? "/api/maps/gwr-runtime" : "/api/maps/professional-overlay";
           const response = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -3166,11 +3163,14 @@
           "<span><strong>GERES:</strong> " + (activeGeres === "ALL" ? "Todas as GERES" : activeGeres) + "</span>" +
           "<span><strong>Municipio:</strong> " + municipio + "</span>" +
           "<span><strong>Metodo:</strong> " + describeMode(selectedDemoMode) + "</span>";
-        // The demonstrator is always a lightweight client-side preview.
-        // It must react to selections without triggering backend/network work.
+        // Give immediate client-side feedback, then refresh the scientific
+        // product asynchronously from observed/validated data.
         demoCanvas.style.display = "block";
         professionalMapPreview.classList.remove("visible");
         renderDemonstratorImage(reason, { mode: selectedDemoMode, previewOnly: !options.render });
+        if (!options.render && reason !== "selecao inicial") {
+          scheduleRealtimeScientificRefresh(reason);
+        }
       }
 
       function renderDemonstratorImage(label, options = {}) {
@@ -3744,9 +3744,7 @@
       }
 
       async function autoGenerateIfReady() {
-        // Deliberately passive. Scientific products are generated only by an
-        // explicit user action, never as a side effect of changing filters.
-        return;
+        scheduleRealtimeScientificRefresh("seleção atualizada");
       }
 
       async function generateOverlay(options = {}) {
@@ -4187,11 +4185,8 @@
       async function downloadProfessionalMapFromBackend() {
         // O download deve ser exatamente o mapa produzido pela selecao atual,
         // e nao uma segunda renderizacao generica da rota /download.
-        if (!["gwr","series"].includes(selectedDemoMode)) {
-          if (!lastDemoImageDataUrl) renderDemonstratorImage("produto espacial observado",{mode:selectedDemoMode});
-          if (!lastDemoImageDataUrl) throw new Error("Produto espacial ainda não gerado.");
-          downloadDataUrlFile(lastDemoImageDataUrl,"mapa_"+resolveDiseaseApiKey(selectedDisease.name)+"_"+selectedDemoMode+".png");
-          return;
+        if (selectedDemoMode === "series") {
+          throw new Error("Série temporal não é um mapa cartográfico 300 dpi.");
         }
         if (!lastProfessionalMapUrl || lastProfessionalMapSignature !== currentProfessionalMapSignature()) {
           await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
