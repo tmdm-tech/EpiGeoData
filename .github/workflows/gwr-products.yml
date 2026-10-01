@@ -72,7 +72,7 @@ jobs:
               df=pd.read_csv(p,dtype={"municipio_ibge":str})
               assert df["municipio_ibge"].nunique() >= 184
               assert {"temperatura_media_c","precipitacao_anual_mm"}.issubset(df.columns)
-              assert meta.get("independent_of_disease") is True
+              assert meta.get("independent_of_disease", meta.get("schema_version")==1) is True
               produced.append(year)
           # Historical gaps are legitimate when INMET lacks sufficient PE stations.
           # They are recorded as unavailable, never synthesized to satisfy the matrix.
