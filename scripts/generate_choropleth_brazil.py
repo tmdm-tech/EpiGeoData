@@ -464,25 +464,39 @@ def generate_professional_choropleth(
             "com assinatura validada de agravo, ano e preditores."
         )
 
-    elif mode in {"kernel", "heat", "density"} and has_classified_values:
+    elif mode in {"kernel", "heat"} and has_classified_values:
         import numpy as np
         work = mainland.copy()
         y = pd.to_numeric(work["total_casos"], errors="coerce").fillna(0).to_numpy(dtype=float)
         xy = np.column_stack([work.geometry.centroid.x.to_numpy(), work.geometry.centroid.y.to_numpy()])
-        grid_n = 128
+        grid_n = 160
         minx, miny, maxx, maxy = work.total_bounds
         gx, gy = np.meshgrid(np.linspace(minx, maxx, grid_n), np.linspace(miny, maxy, grid_n))
         span = max(maxx-minx, maxy-miny)
-        bandwidth = span * (0.075 if mode == "kernel" else 0.11 if mode == "heat" else 0.055)
+        bandwidth = span * (0.075 if mode == "kernel" else 0.12)
         surface = np.zeros_like(gx, dtype=float)
-        weights = y if mode != "density" else np.where(y > 0, 1.0, 0.0)
-        for (px, py), wt in zip(xy, weights):
+        for (px, py), wt in zip(xy, y):
             surface += float(wt) * np.exp(-((gx-px)**2 + (gy-py)**2) / (2 * bandwidth**2))
-        ax.imshow(surface, extent=[minx,maxx,miny,maxy], origin="lower", cmap="magma", alpha=.72, zorder=1)
-        work.boundary.plot(ax=ax, color="#666666", linewidth=.35, zorder=2)
-        variable_label = f"{method_label} ponderado por casos"
+        # Mask the raster outside the selected territorial polygon.
+        from shapely.geometry import Point
+        boundary=work.geometry.union_all()
+        flat=np.column_stack([gx.ravel(),gy.ravel()])
+        mask=np.fromiter((boundary.covers(Point(x,y)) for x,y in flat),dtype=bool,count=len(flat)).reshape(gx.shape)
+        surface=np.ma.array(surface,mask=~mask)
+        cmap_name="turbo" if mode=="kernel" else "inferno"
+        ax.imshow(surface, extent=[minx,maxx,miny,maxy], origin="lower", cmap=cmap_name, alpha=.76, zorder=1)
+        work.boundary.plot(ax=ax, color="#707070", linewidth=.32, zorder=2)
+        variable_label = ("Densidade Kernel ponderada por casos" if mode=="kernel" else "Superfície suavizada de intensidade epidemiológica")
         resolved_title = f"{method_label} de {display_name} – Pernambuco"
         legend_handles = [Patch(facecolor="#d95f0e", edgecolor="#333333", label=variable_label)]
+    elif mode == "density" and has_classified_values:
+        work=mainland.copy()
+        area_km2=work.geometry.area/1_000_000.0
+        work["densidade_casos_km2"]=pd.to_numeric(work["total_casos"],errors="coerce").fillna(0)/area_km2.replace(0,pd.NA)
+        work.plot(ax=ax,column="densidade_casos_km2",cmap="YlOrRd",edgecolor="#666666",linewidth=.35,legend=False)
+        variable_label="Densidade de casos por km²"
+        resolved_title=f"Densidade espacial de {display_name} – Pernambuco"
+        legend_handles=[Patch(facecolor="#f16913",edgecolor="#333333",label=variable_label)]
     elif mode in {"moran","lisa","moran_local"} and has_classified_values:
         try:
             from libpysal.weights import Queen
