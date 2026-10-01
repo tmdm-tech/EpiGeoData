@@ -3337,12 +3337,13 @@
 
         if (category === "climatico") {
           if (selectedClimates.size === 0) {
-            updateRobotMessage("Selecione ao menos uma variavel climatica para baixar o mapa climático.");
+            updateRobotMessage("Selecione ao menos uma variavel climatica para visualizar o mapa climático.");
             return null;
           }
-          const firstClimate = Array.from(selectedClimates)[0];
-          fillColor = climateOverlayColor[firstClimate] || "#4d87d7";
-          description = "climático";
+          // Do not collapse a multi-climate selection to the first item.
+          // Each selected validated layer is drawn by drawSelectedClimateLayers().
+          fillColor = "#4d87d7";
+          description = "climático (" + Array.from(selectedClimates).join(" + ") + ")";
         }
 
         const style = (feature) => {
@@ -4134,6 +4135,9 @@
 
       analysisModeSelect.addEventListener("change", () => {
         selectedDemoMode = analysisModeSelect.value;
+        lastProfessionalMapUrl = "";
+        lastProfessionalMapSignature = "";
+        professionalMapStatus.innerHTML = "<strong>Cartografia:</strong> atualizando " + describeMode(selectedDemoMode) + "...";
         refreshDemonstratorFromSelection("metodo atualizado");
       });
 
