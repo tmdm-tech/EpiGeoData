@@ -2,24 +2,10 @@ name: Prepare geospatial scientific cube
 
 on:
   workflow_dispatch:
-    inputs:
-      disease:
-        description: Disease dataset key
-        required: true
-        default: esquistossomose
-      year:
-        description: Analytical year
-        required: true
-        default: "2021"
-      predictors:
-        description: Space-separated predictors (temperatura precipitacao)
-        required: true
-        default: "temperatura precipitacao"
   push:
     branches: [main]
     paths:
-      - "Esquistossomose.csv"
-      - "Dengue.csv"
+      - "*.csv"
       - "scripts/precompute_gwr_products.py"
       - "app.py"
       - "scripts/generate_choropleth_brazil.py"
@@ -28,7 +14,6 @@ on:
       - ".github/workflows/gwr-products.yml"
   schedule:
     - cron: "17 5 1 * *"
-
 permissions:
   contents: write
 
@@ -45,9 +30,6 @@ jobs:
           - "2013 2014 2015 2016 2017 2018"
           - "2019 2020 2021 2022 2023 2024"
           - "2025 2026"
-    concurrency:
-      group: gwr-products-prepare
-      cancel-in-progress: true
     env:
       MPLBACKEND: Agg
       EPIGEODATA_DISABLE_GWR_PREWARM: "1"
@@ -124,7 +106,7 @@ jobs:
           git add -f data/gwr_products data/climaticas/painel_climatico_pe_*.csv data/climaticas/manifest_climatico_pe_*.json
           # Do not reset generated climate panels after staging them.
           if git diff --cached --quiet; then
-            echo "GWR products already current."
+            echo "Scientific cube already current."
             exit 0
           fi
           git commit -m "data: update disease-neutral scientific cube [skip cube]"
