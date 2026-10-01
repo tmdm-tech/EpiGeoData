@@ -1,4 +1,4 @@
-name: Prepare validated GWR products
+name: Prepare geospatial scientific cube
 
 on:
   workflow_dispatch:
@@ -59,77 +59,41 @@ jobs:
       - name: Install scientific dependencies
         run: pip install -r requirements.txt
 
-      - name: Resolve requested signature
-        id: sig
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "disease=${{ inputs.disease }}" >> "$GITHUB_OUTPUT"
-            echo "year=${{ inputs.year }}" >> "$GITHUB_OUTPUT"
-            echo "predictors=${{ inputs.predictors }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "disease=esquistossomose" >> "$GITHUB_OUTPUT"
-            echo "year=2021" >> "$GITHUB_OUTPUT"
-            echo "predictors=temperatura precipitacao" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Prepare statewide validated GWR
+      - name: Discover and prepare compatible dimensions
         shell: bash
         run: |
           set -e
-          for attempt in 1 2 3; do
-            if python scripts/precompute_gwr_products.py \
-              --disease "${{ steps.sig.outputs.disease }}" \
-              --year "${{ steps.sig.outputs.year }}" \
-              --predictors ${{ steps.sig.outputs.predictors }} \
-              --force; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "Official INMET endpoint unavailable on attempt $attempt; retrying in 30s..."
-              sleep 30
-            fi
-          done
-          exit 1
+          python scripts/precompute_gwr_products.py --all
 
-      - name: Legacy prepare command disabled
-        if: ${{ false }}
-        run: |
-          python scripts/precompute_gwr_products.py \
-            --disease "${{ steps.sig.outputs.disease }}" \
-            --year "${{ steps.sig.outputs.year }}" \
-            --predictors ${{ steps.sig.outputs.predictors }} \
-            --force
-
-      - name: Validate committed product
+      - name: Validate canonical geospatial dimensions
         shell: bash
         run: |
-          test -d data/gwr_products
-          test -f "data/climaticas/painel_climatico_pe_${{ steps.sig.outputs.year }}.csv"
-          test -f "data/climaticas/manifest_climatico_pe_${{ steps.sig.outputs.year }}.json"
-          test -n "$(find data/gwr_products -name 'manifest_*.json' -print -quit)"
-          test -n "$(find data/gwr_products -name '*.geojson' -print -quit)"
-          test -n "$(find data/gwr_products -name '*.png' -print -quit)"
           python - <<'PY'
           import json
           from pathlib import Path
-          root=Path("data/gwr_products")
-          manifests=list(root.glob("manifest_*.json"))
-          assert manifests, "manifesto GWR ausente"
-          for manifest in manifests:
-              data=json.loads(manifest.read_text(encoding="utf-8"))
-              assert data.get("records_used",0) >= 30
-              paths=[data["joined_geojson_file"], *data.get("map_files",{}).values()]
-              for rel in paths:
-                  p=Path(rel)
-                  assert not p.is_absolute(), f"caminho absoluto não portável: {p}"
-                  assert p.exists(), f"artefato ausente: {p}"
+          import pandas as pd
+          root=Path("data/climaticas")
+          manifests=sorted(root.glob("manifest_climatico_pe_*.json"))
+          assert manifests, "nenhum painel climático preparado"
+          for m in manifests:
+              meta=json.loads(m.read_text(encoding="utf-8"))
+              year=int(meta["year"])
+              p=root/f"painel_climatico_pe_{year}.csv"
+              assert p.exists(), f"painel climático ausente: {year}"
+              df=pd.read_csv(p,dtype={"municipio_ibge":str})
+              assert df["municipio_ibge"].nunique() >= 184
+              assert {"temperatura_media_c","precipitacao_anual_mm"}.issubset(df.columns)
+              assert meta.get("independent_of_disease") is True
+          for m in Path("data/gwr_products").glob("manifest_*.json"):
+              data=json.loads(m.read_text(encoding="utf-8"))
+              assert data.get("records_used",0)>=30
+          print("validated climate years",len(manifests))
           PY
 
-      - name: Commit versioned GWR products
+      - name: Commit versioned scientific cube
         shell: bash
         run: |
-          git config user.name "epigeodata-gwr-bot"
+          git config user.name "epigeodata-science-bot"
           git config user.email "actions@users.noreply.github.com"
           git add -f data/gwr_products data/climaticas/painel_climatico_pe_*.csv data/climaticas/manifest_climatico_pe_*.json
           # Do not reset generated climate panels after staging them.
@@ -137,6 +101,6 @@ jobs:
             echo "GWR products already current."
             exit 0
           fi
-          git commit -m "data: publish validated GWR products [skip gwr]"
+          git commit -m "data: update disease-neutral scientific cube [skip cube]"
           git pull --rebase --autostash origin main
           git push origin HEAD:main
