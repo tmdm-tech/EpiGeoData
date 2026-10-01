@@ -16,6 +16,8 @@ from datetime import datetime
 from pathlib import Path
 
 import geopandas as gpd
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.colors import BoundaryNorm
@@ -346,7 +348,10 @@ def generate_professional_choropleth(
         mainland = municipal
         resolved_title = f"{display_name} – {mainland.iloc[0].get('name_muni', code)}, Pernambuco"
 
-    fig, ax = plt.subplots(figsize=(12.8, 6.0), facecolor=BACKGROUND_COLOR)
+    # Keep the final export at 300 dpi while bounding the raster buffer.
+    # 10 x 5 in = 3000 x 1500 px (~18 MB raw RGBA), materially below the
+    # previous 3840 x 1800 canvas and safer on a single Render worker.
+    fig, ax = plt.subplots(figsize=(10.0, 5.0), facecolor=BACKGROUND_COLOR)
     ax.set_facecolor(BACKGROUND_COLOR)
     legend_handles: list[Patch] = []
     mode = normalize_token(analysis_mode)
@@ -381,7 +386,7 @@ def generate_professional_choropleth(
         work = mainland.copy()
         y = pd.to_numeric(work["total_casos"], errors="coerce").fillna(0).to_numpy(dtype=float)
         xy = np.column_stack([work.geometry.centroid.x.to_numpy(), work.geometry.centroid.y.to_numpy()])
-        grid_n = 180
+        grid_n = 128
         minx, miny, maxx, maxy = work.total_bounds
         gx, gy = np.meshgrid(np.linspace(minx, maxx, grid_n), np.linspace(miny, maxy, grid_n))
         span = max(maxx-minx, maxy-miny)
@@ -459,9 +464,23 @@ def generate_professional_choropleth(
     source_label="DATASUS / cartografia municipal IBGE" if has_local_data else "Cartografia municipal IBGE"
     fig.text(.02,.025,f"Fonte: {source_label}. Elaboração: EpiGeoData.",fontsize=9,color="#333333")
     try:
-        fig.savefig(output_file,dpi=dpi,facecolor=BACKGROUND_COLOR)
+        fig.savefig(
+            output_file,
+            dpi=dpi,
+            facecolor=BACKGROUND_COLOR,
+            format="png",
+            pil_kwargs={"compress_level": 6},
+        )
     finally:
+        # Explicitly release Matplotlib, GeoPandas and NumPy-heavy references
+        # before the request returns. This is important on Render's single worker.
         plt.close(fig)
+        try:
+            del mainland
+        except UnboundLocalError:
+            pass
+        import gc
+        gc.collect()
 
     return ChoroplethResult(
         output_file=output_file,
