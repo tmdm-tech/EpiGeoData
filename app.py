@@ -194,6 +194,16 @@ def _normalize_token(value: str) -> str:
     return value
 
 
+def _canonical_climate_key(value: str) -> str:
+    token=_normalize_token(str(value or ""))
+    aliases={
+        "precipitacao":"precipitacao","temperatura":"temperatura","queimadas":"queimadas",
+        "cobertura_vegetal":"cobertura_vegetal",
+        "relevo":"relevo","relevo__hidrografia":"relevo","relevo_hidrografia":"relevo",
+    }
+    return aliases.get(token,token)
+
+
 def _normalize_municipio_key(value: str) -> str:
     value = str(value or "").strip().lower()
     value = value.replace("ç", "c")
@@ -1657,7 +1667,7 @@ def generate_runtime_gwr():
     if len(years)!=1:
         return jsonify({"ok":False,"error":"GWR exige exatamente um ano analítico por ajuste"}),422
     year=years[0]
-    climate_keys={_normalize_token(v) for v in (payload.get("selected_climates") or [])}
+    climate_keys={_canonical_climate_key(v) for v in (payload.get("selected_climates") or [])}
     mapping={"temperatura":"temperatura_media_c","precipitacao":"precipitacao_anual_mm"}
     predictors=[mapping[k] for k in ("temperatura","precipitacao") if k in climate_keys]
     if not predictors:
@@ -1745,13 +1755,16 @@ def generate_maps_by_geres():
     from scripts.generate_choropleth_brazil import generate_professional_choropleth
     for geres_name in GERES_MUNICIPALITIES:
         try:
+            import hashlib
+            geres_digest=hashlib.sha1(repr((disease_key,mode,tuple(years),tuple(climates),geres_name)).encode("utf-8")).hexdigest()[:12]
             result=generate_professional_choropleth(
                 disease_key=disease_key,
                 analysis_mode=mode,
                 selected_years=years,
                 selected_climates=climates,
                 geres=geres_name,
-                dpi=300,
+                output_filename=f"geres_{_normalize_token(geres_name)}_{geres_digest}.png",
+                dpi=180,
             )
             results[geres_name]={
                 "image_url":f"/static/maps/{result.output_file.name}",
@@ -1776,7 +1789,7 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
     title = str(payload.get("title", "")).strip() or DEFAULT_PROFESSIONAL_MAP_TITLE
     analysis_mode = str(payload.get("analysis_mode", "choropleth")).strip().lower()
     selected_years = sorted({int(y) for y in (payload.get("selected_years") or []) if str(y).isdigit()})
-    selected_climates = tuple(sorted({_normalize_token(v) for v in (payload.get("selected_climates") or []) if str(v).strip()}))
+    selected_climates = tuple(sorted({_canonical_climate_key(v) for v in (payload.get("selected_climates") or []) if str(v).strip()}))
     socio_variable = _normalize_token(str(payload.get("socio_variable", "")))
     socio_scope = _normalize_token(str(payload.get("socio_scope", "")))
     geres = str(payload.get("geres", "ALL")).strip()
