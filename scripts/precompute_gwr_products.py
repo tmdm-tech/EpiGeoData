@@ -67,9 +67,13 @@ def prepare_all(years: list[int] | None=None, force: bool=False, fit_gwr: bool=T
     """Prepare the shared climate cube; GWR products are opt-in, never multiplied blindly."""
     catalog=webapp._epidemiology_temporal_catalog()
     all_epi_years=sorted({y for item in catalog.values() for y in item["years"]})
-    requested=sorted(set(years or all_epi_years))
     current=datetime.now(timezone.utc).year
-    requested=[y for y in requested if 2000<=y<=current]
+    if years:
+        requested=sorted({y for y in years if 2000<=y<=current})
+    else:
+        # Existing panels are preserved; the routine fills the whole epidemiological
+        # union, but callers/workflows may shard this list to keep jobs bounded.
+        requested=sorted({y for y in all_epi_years if 2000<=y<=current})
     climate_results={}; failures={}
     for year in requested:
         try: climate_results[year]=persist_climate(year,force=force)
