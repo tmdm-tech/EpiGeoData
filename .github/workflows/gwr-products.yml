@@ -21,6 +21,8 @@ on:
       - "Esquistossomose.csv"
       - "Dengue.csv"
       - "scripts/precompute_gwr_products.py"
+      - "app.py"
+      - "scripts/generate_choropleth_brazil.py"
       - "scripts/generate_epidemiological_gwr_maps.py"
       - "data/municipios_pe_ibge.geojson"
       - ".github/workflows/gwr-products.yml"
@@ -100,6 +102,8 @@ jobs:
         shell: bash
         run: |
           test -d data/gwr_products
+          test -f "data/climaticas/painel_climatico_pe_${{ steps.sig.outputs.year }}.csv"
+          test -f "data/climaticas/manifest_climatico_pe_${{ steps.sig.outputs.year }}.json"
           test -n "$(find data/gwr_products -name 'manifest_*.json' -print -quit)"
           test -n "$(find data/gwr_products -name '*.geojson' -print -quit)"
           test -n "$(find data/gwr_products -name '*.png' -print -quit)"
@@ -124,10 +128,9 @@ jobs:
         run: |
           git config user.name "epigeodata-gwr-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/gwr_products
-          # Ignore runtime caches/downloads outside the versioned scientific store.
-          git checkout -- . ':!data/gwr_products' 2>/dev/null || true
-          git clean -fd -e data/gwr_products/ >/dev/null 2>&1 || true
+          git add data/gwr_products data/climaticas/painel_climatico_pe_*.csv data/climaticas/manifest_climatico_pe_*.json
+          # Keep versioned scientific outputs produced by this workflow.
+          git checkout -- . ':!data/gwr_products' ':!data/climaticas/painel_climatico_pe_*.csv' ':!data/climaticas/manifest_climatico_pe_*.json' 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "GWR products already current."
             exit 0
