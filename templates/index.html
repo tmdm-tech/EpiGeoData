@@ -1349,21 +1349,25 @@
             <h2>Variáveis climáticas</h2>
             <p>Seleção múltipla habilitada.</p>
             <div class="chip-grid" id="climateButtons">
-              <button class="chip" data-type="clima" data-name="Precipitacao" data-note="Acumulado de chuva para correlacao com vetores.">
+              <button class="chip" data-type="clima" data-name="Precipitacao" data-climate="precipitacao" data-note="Acumulado de chuva para correlacao com vetores.">
                 <div class="icon">🌧️</div>
                 <div class="chip-content"><strong>Precipitacao</strong><span>Camada climatica</span></div>
               </button>
-              <button class="chip" data-type="clima" data-name="Temperatura" data-note="Leitura de sazonalidade dos agravos.">
+              <button class="chip" data-type="clima" data-name="Temperatura" data-climate="temperatura" data-note="Leitura de sazonalidade dos agravos.">
                 <div class="icon">🌡️</div>
                 <div class="chip-content"><strong>Temperatura</strong><span>Camada climatica</span></div>
               </button>
-              <button class="chip" data-type="clima" data-name="Relevo + Hidrografia" data-note="Estrutura topográfica e proximidade de rede hídrica.">
+              <button class="chip" data-type="clima" data-name="Relevo + Hidrografia" data-climate="relevo" data-note="Estrutura topográfica e proximidade de rede hídrica.">
                 <div class="icon">⛰️</div>
                 <div class="chip-content"><strong>Relevo + Hidrografia</strong><span>Camada ambiental</span></div>
               </button>
-              <button class="chip" data-type="clima" data-name="Cobertura vegetal" data-note="Contexto ecologico dos territorios.">
+              <button class="chip" data-type="clima" data-name="Cobertura vegetal" data-climate="cobertura_vegetal" data-note="Contexto ecologico dos territorios.">
                 <div class="icon">🌿</div>
                 <div class="chip-content"><strong>Cobertura vegetal</strong><span>Camada climatica</span></div>
+              </button>
+              <button class="chip" data-type="clima" data-name="Queimadas" data-climate="queimadas" data-note="Focos observados; exibidos como pontos, sem interpolacao quando a cobertura for insuficiente.">
+                <div class="icon">🔥</div>
+                <div class="chip-content"><strong>Queimadas</strong><span>Camada ambiental pontual</span></div>
               </button>
             </div>
 
