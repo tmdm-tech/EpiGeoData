@@ -17,6 +17,18 @@ def prepare(disease: str, year: int, predictors: list[str], force: bool=False) -
     existing=webapp._load_persisted_gwr_product(disease,year,predictors)
     if existing and not force:
         return existing
+    # Persist the climate panel independently of the disease so every
+    # cartographic/epidemiological method can reuse the same period-matched layer.
+    climate,climate_meta=webapp._historical_climate_municipal_panel(year)
+    climate_dir=BASE/"data"/"climaticas"; climate_dir.mkdir(parents=True,exist_ok=True)
+    climate_path=climate_dir/f"painel_climatico_pe_{year}.csv"
+    climate.to_csv(climate_path,index=False)
+    climate_manifest=climate_dir/f"manifest_climatico_pe_{year}.json"
+    climate_manifest.write_text(json.dumps({
+        "schema_version":1,"year":year,"prepared_at":datetime.now(timezone.utc).isoformat(),
+        "source":"INMET Dados Históricos Anuais","territory":"IBGE municípios de Pernambuco",
+        **climate_meta
+    },ensure_ascii=False,indent=2),encoding="utf-8")
     panel,meta=webapp._build_runtime_gwr_panel(disease,year,predictors)
     panel_path=webapp._gwr_panel_path(disease,year,predictors)
     panel.to_csv(panel_path,index=False)
