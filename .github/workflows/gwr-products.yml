@@ -32,10 +32,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: gwr-products
-  cancel-in-progress: false
-
 jobs:
   prepare:
     runs-on: ubuntu-latest
