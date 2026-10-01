@@ -1564,9 +1564,11 @@ def spatial_municipal_values():
         if observed:
             rows.append({"ibge":str(item["id"]).replace(".0",""),"municipio":item["nome"],
                          "value":sum(observed)/len(observed),"n_years":len(observed)})
+    # Do not embed the ~3.3 MB municipal GeoJSON in every filter response.
+    # The frontend already loads /api/cartography/pernambuco once and caches it.
     return jsonify({"ok":True,"disease_key":disease_key,"years":[y for y,_ in per_year],
                     "years_unavailable":unavailable,"aggregation":"media_dos_anos_observados_por_municipio",
-                    "municipal_values":rows,"municipalities_geojson":municipalities_geojson,
+                    "municipal_values":rows,"municipalities_geojson_url":"/api/cartography/pernambuco",
                     "source":"DATASUS/TABNET versionado + malha municipal IBGE; sem imputação",
                     "source_files":sorted(set(sources))}),200
 
