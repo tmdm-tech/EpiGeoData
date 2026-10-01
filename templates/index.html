@@ -2684,16 +2684,27 @@
         return [acc[0] / points.length, acc[1] / points.length];
       }
 
+      let spatialObservationSignature = "";
+      let spatialObservationPromise = null;
       async function loadSpatialMunicipalObservations() {
-        const body={disease_key:resolveDiseaseApiKey(selectedDisease.name),selected_years:Array.from(selectedYears).map(Number).filter(Number.isFinite)};
-        const response=await fetch("/api/spatial/municipal-values",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-        const payload=await response.json();
-        if(!response.ok) throw new Error(payload?.error||"Dados municipais indisponíveis");
-        spatialMunicipalPayload=payload;
-        diseaseMunicipioValues.clear();
-        (payload.municipal_values||[]).forEach(row=>{const v=Number(row.value);if(Number.isFinite(v))diseaseMunicipioValues.set(normalizeName(row.municipio),v);});
-        if(payload.municipalities_geojson) currentMapGeoJson=payload.municipalities_geojson;
-        return payload;
+        const body={disease_key:resolveDiseaseApiKey(selectedDisease.name),selected_years:Array.from(selectedYears).map(Number).filter(Number.isFinite).sort((a,b)=>a-b)};
+        const signature=JSON.stringify(body);
+        if(spatialMunicipalPayload && spatialObservationSignature===signature) return spatialMunicipalPayload;
+        if(spatialObservationPromise && spatialObservationSignature===signature) return spatialObservationPromise;
+        spatialObservationSignature=signature;
+        spatialObservationPromise=(async()=>{
+          const response=await fetch("/api/spatial/municipal-values",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+          const payload=await response.json();
+          if(!response.ok) throw new Error(payload?.error||"Dados municipais indisponíveis");
+          spatialMunicipalPayload=payload;
+          diseaseMunicipioValues.clear();
+          (payload.municipal_values||[]).forEach(row=>{const v=Number(row.value);if(Number.isFinite(v))diseaseMunicipioValues.set(normalizeName(row.municipio),v);});
+          // Geometry is loaded once from /api/cartography/pernambuco; never refetch
+          // the same 3+ MB payload on each scientific selection.
+          if(!currentMapGeoJson || !(currentMapGeoJson.features||[]).length) currentMapGeoJson=getCurrentBaseFeatureCollection();
+          return payload;
+        })();
+        try{return await spatialObservationPromise;}finally{spatialObservationPromise=null;}
       }
 
       function buildProjectedSpatialData(featureCollection, width, height) {
