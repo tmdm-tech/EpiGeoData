@@ -64,25 +64,24 @@ def prepare(disease: str, year: int, predictors: list[str], force: bool=False) -
 
 
 def prepare_all(years: list[int] | None=None, force: bool=False, fit_gwr: bool=True) -> dict:
-    """Discover all disease/year intersections; no canonical disease or year."""
+    """Prepare the shared climate cube; GWR products are opt-in, never multiplied blindly."""
     catalog=webapp._epidemiology_temporal_catalog()
     all_epi_years=sorted({y for item in catalog.values() for y in item["years"]})
     requested=sorted(set(years or all_epi_years))
     current=datetime.now(timezone.utc).year
-    # INMET automatic historical archive is supported from 2000 through current year.
     requested=[y for y in requested if 2000<=y<=current]
     climate_results={}; failures={}
     for year in requested:
         try: climate_results[year]=persist_climate(year,force=force)
         except Exception as exc: failures[f"climate:{year}"]=f"{type(exc).__name__}: {exc}"
     products=[]
+    # Optional batch GWR exists for controlled research runs, but the default
+    # infrastructure workflow only prepares reusable climate dimensions.
     if fit_gwr:
         for disease,item in catalog.items():
             for year in sorted(set(item["years"]) & set(climate_results)):
-                try:
-                    products.append(prepare(disease,year,["temperatura","precipitacao"],force=force))
-                except Exception as exc:
-                    failures[f"gwr:{disease}:{year}"]=f"{type(exc).__name__}: {exc}"
+                try: products.append(prepare(disease,year,["temperatura","precipitacao"],force=force))
+                except Exception as exc: failures[f"gwr:{disease}:{year}"]=f"{type(exc).__name__}: {exc}"
     return {"schema_version":2,"climate_years":sorted(climate_results),
             "gwr_products":[{"disease_key":p["disease_key"],"year":p["year"],"records_used":p["records_used"]} for p in products],
             "failures":failures,"diseases":catalog}
@@ -95,17 +94,17 @@ def main():
     p.add_argument("--years",nargs="*",type=int)
     p.add_argument("--predictors",nargs="+",default=["temperatura","precipitacao"])
     p.add_argument("--all",action="store_true",help="Discover all diseases/years automatically")
-    p.add_argument("--climate-only",action="store_true")
+    p.add_argument("--fit-gwr",action="store_true",help="also fit every compatible disease/year GWR; expensive research batch")
     p.add_argument("--force",action="store_true")
     a=p.parse_args()
     if a.all:
-        result=prepare_all(a.years,force=a.force,fit_gwr=not a.climate_only)
-    elif a.year and a.climate_only:
+        result=prepare_all(a.years,force=a.force,fit_gwr=a.fit_gwr)
+    elif a.year and not a.disease:
         result=persist_climate(a.year,force=a.force)
     elif a.disease and a.year:
         result=prepare(a.disease,a.year,a.predictors,a.force)
     else:
-        p.error("use --all, or --year with --climate-only, or --disease + --year")
+        p.error("use --all, --year for climate, or --disease + --year")
     print(json.dumps(result,ensure_ascii=False,indent=2))
 
 if __name__=="__main__": main()
