@@ -203,46 +203,69 @@ def load_municipality_totals(csv_path: Path, selected_years: list[int] | None = 
     return clean.groupby(["codigo_ibge", "join_name"], dropna=False, as_index=False)["total_casos"].sum()
 
 
-def load_validated_climate_observations(selected_climates: list[str] | None) -> list[tuple[str, gpd.GeoDataFrame, str]]:
-    """Load only observed local climate points. Never interpolate sparse observations."""
+def load_validated_climate_observations(selected_climates: list[str] | None, selected_years: list[int] | None = None) -> list[tuple[str, gpd.GeoDataFrame, str]]:
+    """Load period-matched historical INMET municipal surfaces when prepared.
+
+    Legacy/current sparse GeoJSON layers remain point observations only.
+    """
+    layers=[]
+    years=sorted({int(y) for y in (selected_years or [])})
+    if len(years)==1:
+        panel_path=BASE_DIR/"data"/"climaticas"/f"painel_climatico_pe_{years[0]}.csv"
+        if panel_path.exists():
+            panel=pd.read_csv(panel_path,dtype={"municipio_ibge":str})
+            muni=load_pernambuco_municipalities().copy()
+            muni["municipio_ibge"]=muni["codigo_ibge"].astype(str).str.replace(".0","",regex=False)
+            panel["municipio_ibge"]=panel["municipio_ibge"].astype(str).str.replace(".0","",regex=False)
+            joined=muni.merge(panel,on="municipio_ibge",how="inner")
+            for raw in selected_climates or []:
+                key=normalize_token(raw)
+                field={"temperatura":"temperatura_media_c","precipitacao":"precipitacao_anual_mm"}.get(key)
+                label={"temperatura":"Temperatura média anual (°C)","precipitacao":"Precipitação anual (mm)"}.get(key)
+                if field and field in joined.columns and joined[field].notna().sum()>=30:
+                    layer=joined[joined[field].notna()].copy()
+                    layer["_climate_value"]=pd.to_numeric(layer[field],errors="coerce")
+                    layer["_climate_surface"]=True
+                    layers.append((key,layer,label))
     specs={
-        "precipitacao":("precipitacao.geojson","precipitacao_mm","Precipitação (mm)"),
-        "temperatura":("temperatura.geojson","temperatura_c","Temperatura (°C)"),
+        "precipitacao":("precipitacao.geojson","precipitacao_mm","Precipitação atual (mm)"),
+        "temperatura":("temperatura.geojson","temperatura_c","Temperatura atual (°C)"),
         "queimadas":("queimadas.geojson","intensidade","Focos/ intensidade de queimadas"),
     }
-    layers=[]
+    already={x[0] for x in layers}
     for raw in selected_climates or []:
         key=normalize_token(raw)
-        if key not in specs:
-            continue
+        if key in already or key not in specs: continue
         filename,value_col,label=specs[key]
         path=BASE_DIR/"data"/"climaticas"/filename
-        if not path.exists():
-            continue
+        if not path.exists(): continue
         gdf=gpd.read_file(path)
-        if gdf.empty or value_col not in gdf.columns:
-            continue
-        if gdf.crs is None:
-            gdf=gdf.set_crs("EPSG:4326")
+        if gdf.empty or value_col not in gdf.columns: continue
+        if gdf.crs is None: gdf=gdf.set_crs("EPSG:4326")
         gdf=gdf.to_crs(TARGET_CRS)
         gdf[value_col]=pd.to_numeric(gdf[value_col],errors="coerce")
         gdf=gdf[gdf[value_col].notna()].copy()
-        if not gdf.empty:
-            layers.append((key,gdf,label))
+        if not gdf.empty: layers.append((key,gdf,label))
     return layers
 
 
 def plot_climate_observations(ax: plt.Axes, layers: list[tuple[str,gpd.GeoDataFrame,str]]) -> list[Patch]:
-    """Overlay truthful point observations; sparse data are never promoted to a statewide surface."""
+    """Render historical municipal climate surfaces or truthful sparse points."""
     handles=[]
     markers={"precipitacao":"o","temperatura":"^","queimadas":"s"}
     colors={"precipitacao":"#2166ac","temperatura":"#d73027","queimadas":"#7f3b08"}
+    cmaps={"precipitacao":"Blues","temperatura":"RdYlBu_r"}
     for key,gdf,label in layers:
-        gdf.plot(ax=ax,marker=markers.get(key,"o"),color=colors.get(key,"#333333"),
-                 markersize=34,edgecolor="white",linewidth=.7,zorder=12)
-        handles.append(Line2D([0],[0],marker=markers.get(key,"o"),linestyle="",
-                              markerfacecolor=colors.get(key,"#333333"),markeredgecolor="white",
-                              markersize=7,label=label+" — observação pontual"))
+        if "_climate_surface" in gdf.columns and bool(gdf["_climate_surface"].iloc[0]):
+            gdf.plot(ax=ax,column="_climate_value",cmap=cmaps.get(key,"viridis"),alpha=.38,
+                     edgecolor="none",zorder=3)
+            handles.append(Patch(facecolor=colors.get(key,"#777777"),alpha=.55,label=label+" — INMET/IDW"))
+        else:
+            gdf.plot(ax=ax,marker=markers.get(key,"o"),color=colors.get(key,"#333333"),
+                     markersize=34,edgecolor="white",linewidth=.7,zorder=12)
+            handles.append(Line2D([0],[0],marker=markers.get(key,"o"),linestyle="",
+                                  markerfacecolor=colors.get(key,"#333333"),markeredgecolor="white",
+                                  markersize=7,label=label+" — observação pontual"))
     return handles
 
 
@@ -546,7 +569,7 @@ def generate_professional_choropleth(
     if mode not in {"series","serie_temporal"}:
         mainland.dissolve().boundary.plot(ax=ax,color="#111111",linewidth=1.4)
         set_standard_map_frame(ax, mainland)
-        climate_layers=load_validated_climate_observations(selected_climates)
+        climate_layers=load_validated_climate_observations(selected_climates,selected_years)
         legend_handles.extend(plot_climate_observations(ax,climate_layers))
         add_cartographic_elements(ax)
     context_parts = [f"Método: {method_label}"]
