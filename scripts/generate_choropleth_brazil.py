@@ -203,6 +203,70 @@ def load_municipality_totals(csv_path: Path, selected_years: list[int] | None = 
     return clean.groupby(["codigo_ibge", "join_name"], dropna=False, as_index=False)["total_casos"].sum()
 
 
+def load_validated_climate_observations(selected_climates: list[str] | None) -> list[tuple[str, gpd.GeoDataFrame, str]]:
+    """Load only observed local climate points. Never interpolate sparse observations."""
+    specs={
+        "precipitacao":("precipitacao.geojson","precipitacao_mm","Precipitação (mm)"),
+        "temperatura":("temperatura.geojson","temperatura_c","Temperatura (°C)"),
+        "queimadas":("queimadas.geojson","intensidade","Focos/ intensidade de queimadas"),
+    }
+    layers=[]
+    for raw in selected_climates or []:
+        key=normalize_token(raw)
+        if key not in specs:
+            continue
+        filename,value_col,label=specs[key]
+        path=BASE_DIR/"data"/"climaticas"/filename
+        if not path.exists():
+            continue
+        gdf=gpd.read_file(path)
+        if gdf.empty or value_col not in gdf.columns:
+            continue
+        if gdf.crs is None:
+            gdf=gdf.set_crs("EPSG:4326")
+        gdf=gdf.to_crs(TARGET_CRS)
+        gdf[value_col]=pd.to_numeric(gdf[value_col],errors="coerce")
+        gdf=gdf[gdf[value_col].notna()].copy()
+        if not gdf.empty:
+            layers.append((key,gdf,label))
+    return layers
+
+
+def plot_climate_observations(ax: plt.Axes, layers: list[tuple[str,gpd.GeoDataFrame,str]]) -> list[Patch]:
+    """Overlay truthful point observations; sparse data are never promoted to a statewide surface."""
+    handles=[]
+    markers={"precipitacao":"o","temperatura":"^","queimadas":"s"}
+    colors={"precipitacao":"#2166ac","temperatura":"#d73027","queimadas":"#7f3b08"}
+    for key,gdf,label in layers:
+        gdf.plot(ax=ax,marker=markers.get(key,"o"),color=colors.get(key,"#333333"),
+                 markersize=34,edgecolor="white",linewidth=.7,zorder=12)
+        handles.append(Line2D([0],[0],marker=markers.get(key,"o"),linestyle="",
+                              markerfacecolor=colors.get(key,"#333333"),markeredgecolor="white",
+                              markersize=7,label=label+" — observação pontual"))
+    return handles
+
+
+def load_epidemiological_time_series(csv_path: Path) -> pd.DataFrame:
+    """Aggregate observed TABNET year columns without smoothing or imputation."""
+    last_error=None
+    for encoding in ("utf-8-sig","cp1252","latin1"):
+        try:
+            df=pd.read_csv(csv_path,sep=";",skiprows=3,encoding=encoding)
+            break
+        except Exception as exc:
+            last_error=exc
+    else:
+        raise ValueError(f"Não foi possível ler série temporal: {last_error}")
+    years=[col for col in df.columns if re.fullmatch(r"(19|20)\d{2}",str(col).strip())]
+    if not years:
+        raise ValueError("Arquivo epidemiológico sem colunas anuais observadas.")
+    totals=[]
+    for year in years:
+        vals=pd.to_numeric(df[year].astype(str).str.replace("-","0").str.replace(".","",regex=False),errors="coerce")
+        totals.append((int(year),float(vals.fillna(0).sum())))
+    return pd.DataFrame(totals,columns=["ano","valor"]).sort_values("ano")
+
+
 def add_cartographic_elements(ax: plt.Axes) -> None:
     """Norte + barra de escala leve, sem matplotlib-scalebar."""
     ax.set_axis_off()
@@ -351,7 +415,10 @@ def generate_professional_choropleth(
     # Keep the final export at 300 dpi while bounding the raster buffer.
     # 10 x 5 in = 3000 x 1500 px (~18 MB raw RGBA), materially below the
     # previous 3840 x 1800 canvas and safer on a single Render worker.
-    fig, ax = plt.subplots(figsize=(10.0, 5.0), facecolor=BACKGROUND_COLOR)
+    fig = plt.figure(figsize=(11.0, 6.2), facecolor=BACKGROUND_COLOR)
+    grid = fig.add_gridspec(1, 2, width_ratios=[4.6, 1.55], wspace=0.05)
+    ax = fig.add_subplot(grid[0,0])
+    panel_ax = fig.add_subplot(grid[0,1])
     ax.set_facecolor(BACKGROUND_COLOR)
     legend_handles: list[Patch] = []
     mode = normalize_token(analysis_mode)
@@ -369,19 +436,35 @@ def generate_professional_choropleth(
     method_labels = {
         "gwr": "GWR", "kernel": "Kernel", "heat": "Mapa de calor",
         "density": "Densidade", "moran": "Moran Local (LISA)",
-        "overlay": "Sobreposição multivariada", "choropleth": "Coroplético",
+        "overlay": "Sobreposição multivariada", "choropleth": "Coroplético", "series": "Série temporal",
     }
     method_label = method_labels.get(mode, mode.replace("_", " ").title())
 
-    if mode in {"gwr"}:
-        # GWR permanece fail-closed: não rotular uma superfície suavizada como
-        # regressão geograficamente ponderada sem painel clima-saúde harmonizado.
+    if mode in {"series","serie_temporal"}:
+        if csv_path is None:
+            raise ValueError("Série temporal indisponível: não há arquivo epidemiológico local observado para este agravo.")
+        series=load_epidemiological_time_series(csv_path)
+        if selected_years:
+            chosen=series[series["ano"].isin([int(y) for y in selected_years])]
+            if not chosen.empty:
+                series=chosen
+        ax.plot(series["ano"],series["valor"],marker="o",linewidth=2.0,color="#285f8f")
+        ax.set_xlabel("Ano")
+        ax.set_ylabel("Total observado")
+        ax.grid(axis="y",alpha=.22,linewidth=.6)
+        ax.spines[["top","right"]].set_visible(False)
+        variable_label="Série temporal observada"
+        resolved_title=f"Série temporal de {display_name} – Pernambuco"
+        legend_handles=[Line2D([0],[0],color="#285f8f",marker="o",label="Total observado")]
+    elif mode in {"gwr"}:
+        # GWR remains fail-closed here. Valid persisted GWR products are served
+        # by /api/maps/gwr-runtime and never recomputed from an arbitrary click.
         raise RuntimeError(
-            "GWR científico indisponível para esta seleção: o painel município-período "
-            "de clima e desfecho ainda não satisfaz a validação necessária ao ajuste."
+            "GWR científico indisponível nesta rota. Use somente produto GWR persistido "
+            "com assinatura validada de agravo, ano e preditores."
         )
 
-    if mode in {"kernel", "heat", "density"} and has_classified_values:
+    elif mode in {"kernel", "heat", "density"} and has_classified_values:
         import numpy as np
         work = mainland.copy()
         y = pd.to_numeric(work["total_casos"], errors="coerce").fillna(0).to_numpy(dtype=float)
@@ -446,23 +529,32 @@ def generate_professional_choropleth(
         mainland.plot(ax=ax,color=NO_DATA_COLOR,edgecolor="#777777",linewidth=.45)
         legend_handles=[Patch(facecolor=NO_DATA_COLOR,edgecolor="#777777",label="Sem dados locais")]
 
-    mainland.dissolve().boundary.plot(ax=ax,color="#111111",linewidth=1.8)
-    set_standard_map_frame(ax, mainland)
-    add_cartographic_elements(ax)
+    if mode not in {"series","serie_temporal"}:
+        mainland.dissolve().boundary.plot(ax=ax,color="#111111",linewidth=1.4)
+        set_standard_map_frame(ax, mainland)
+        climate_layers=load_validated_climate_observations(selected_climates)
+        legend_handles.extend(plot_climate_observations(ax,climate_layers))
+        add_cartographic_elements(ax)
     context_parts = [f"Método: {method_label}"]
     if climate_text: context_parts.append(f"Clima: {climate_text}")
     if geres and geres != "ALL": context_parts.append(f"GERES: {geres}")
     if municipio_id: context_parts.append(f"Município IBGE: {municipio_id}")
     if socio_variable: context_parts.append(f"IBGE: {socio_variable}" + (f" ({socio_scope})" if socio_scope else ""))
     title_text=resolved_title + (f"\nPeríodo: {period}" if period else "") + "\n" + " | ".join(context_parts)
-    ax.set_title(title_text,fontsize=18,fontweight="bold",pad=16,color="#111111")
-    ax.legend(handles=legend_handles,title=variable_label,loc="lower center",
-              bbox_to_anchor=(0.5,-0.18),ncol=min(5,max(1,len(legend_handles))),
-              frameon=False,fontsize=10,title_fontsize=11)
-    ax.set_axis_off()
-    fig.subplots_adjust(left=.02,right=.99,top=.88,bottom=.21)
+    ax.set_title(title_text,fontsize=16,fontweight="bold",pad=14,color="#111111",loc="left")
+    if mode not in {"series","serie_temporal"}:
+        ax.set_axis_off()
     source_label="DATASUS / cartografia municipal IBGE" if has_local_data else "Cartografia municipal IBGE"
-    fig.text(.02,.025,f"Fonte: {source_label}. Elaboração: EpiGeoData.",fontsize=9,color="#333333")
+    climate_note = (" Camadas climáticas locais são mostradas como observações pontuais; "
+                    "não há interpolação estadual quando a cobertura é insuficiente.") if selected_climates else ""
+    render_side_panel(
+        panel_ax,
+        "EpiGeoData",
+        variable_label,
+        f"Fonte: {source_label}.{climate_note}\nCRS cartográfico: SIRGAS 2000 / UTM 25S (EPSG:31985).",
+        legend_handles,
+    )
+    fig.subplots_adjust(left=.035,right=.98,top=.88,bottom=.08)
     try:
         fig.savefig(
             output_file,
