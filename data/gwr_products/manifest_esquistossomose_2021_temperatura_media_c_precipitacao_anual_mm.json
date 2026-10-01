@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "prepared_at": "2026-10-01T05:31:14.291452+00:00",
+  "prepared_at": "2026-10-01T15:25:17.669794+00:00",
   "disease_key": "esquistossomose",
   "year": 2021,
   "predictors": [
@@ -14,9 +14,9 @@
     "gwr_temperatura_media_c": "data/gwr_products/gwr_2021_gwr_temperatura_media_c.png",
     "gwr_precipitacao_anual_mm": "data/gwr_products/gwr_2021_gwr_precipitacao_anual_mm.png"
   },
-  "bandwidth": 48.0,
+  "bandwidth": 50.0,
   "records_used": 62,
-  "methodology": "INMET anual; estação automática mais próxima ao centróide; somente casos completos; sem imputação; ajuste GWR estadual validado; recortes territoriais não refazem o modelo",
+  "methodology": "INMET anual + IDW municipal multie­stação validado; somente casos completos; sem APAC retroativa; ajuste GWR estadual validado; recortes territoriais não refazem o modelo",
   "sources": {
     "climate": "INMET Dados Históricos Anuais",
     "epidemiology": "DATASUS/TABNET",
