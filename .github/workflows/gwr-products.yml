@@ -131,9 +131,8 @@ jobs:
         run: |
           git config user.name "epigeodata-gwr-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/gwr_products data/climaticas/painel_climatico_pe_*.csv data/climaticas/manifest_climatico_pe_*.json
-          # Keep versioned scientific outputs produced by this workflow.
-          git checkout -- . ':!data/gwr_products' ':!data/climaticas/painel_climatico_pe_*.csv' ':!data/climaticas/manifest_climatico_pe_*.json' 2>/dev/null || true
+          git add -f data/gwr_products data/climaticas/painel_climatico_pe_*.csv data/climaticas/manifest_climatico_pe_*.json
+          # Do not reset generated climate panels after staging them.
           if git diff --cached --quiet; then
             echo "GWR products already current."
             exit 0
