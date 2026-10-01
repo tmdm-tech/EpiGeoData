@@ -1568,6 +1568,27 @@ def _build_runtime_gwr_panel(disease_key: str, year: int, predictors: list[str])
     return frame,meta
 
 
+@app.get("/api/climate/historical/<int:year>")
+def historical_climate_panel_status(year: int):
+    """Serve only versioned, precomputed municipality-year climate coverage."""
+    path=Path(__file__).parent/"data"/"climaticas"/f"painel_climatico_pe_{year}.csv"
+    manifest=Path(__file__).parent/"data"/"climaticas"/f"manifest_climatico_pe_{year}.json"
+    if not path.exists() or not manifest.exists():
+        return jsonify({"ready":False,"year":year,"reason":"painel climático histórico ainda não preparado"}),404
+    import pandas as pd
+    frame=pd.read_csv(path,dtype={"municipio_ibge":str})
+    meta=json.loads(manifest.read_text(encoding="utf-8"))
+    rows=[]
+    for _,r in frame.iterrows():
+        rows.append({"municipio_ibge":str(r["municipio_ibge"]).replace(".0",""),"ano":year,
+                     "temperatura_media_c":None if pd.isna(r.get("temperatura_media_c")) else float(r["temperatura_media_c"]),
+                     "precipitacao_anual_mm":None if pd.isna(r.get("precipitacao_anual_mm")) else float(r["precipitacao_anual_mm"]),
+                     "diagnostics":json.loads(r.get("climate_diagnostics") or "{}")})
+    return jsonify({"ready":True,"year":year,"source":"INMET Dados Históricos Anuais",
+                    "method":"IDW municipal multie­stação em EPSG:31985; sem APAC retroativa",
+                    "metadata":meta,"municipal_values":rows}),200
+
+
 @app.get("/api/scientific/readiness")
 def scientific_readiness():
     """Truthful matrix: source reachability is not analytical readiness."""
