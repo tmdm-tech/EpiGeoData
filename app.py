@@ -1484,43 +1484,74 @@ def _build_runtime_gwr_panel(disease_key: str, year: int, predictors: list[str])
 
 @app.get("/api/scientific/readiness")
 def scientific_readiness():
-    """Single source of truth for UI availability; reports only real persisted/local data."""
+    """Truthful matrix: source reachability is not analytical readiness."""
     climate_dir=Path(__file__).parent/"data"/"climaticas"
+    climate_specs={
+        "precipitacao":("precipitacao.geojson","precipitacao_mm"),
+        "temperatura":("temperatura.geojson","temperatura_c"),
+        "queimadas":("queimadas.geojson","intensidade"),
+        "cobertura_vegetal":("cobertura_vegetal.geojson",None),
+        "relevo":("relevo_hidrografia.geojson",None),
+    }
     climates={}
-    for key,layer in CLIMATE_LAYER_BINDINGS.items():
-        validation=CLIMATE_LAYER_VALIDATION.get(key,{"validated":True})
-        p=climate_dir/f"{layer}.geojson"
+    for key,(filename,value_col) in climate_specs.items():
+        p=climate_dir/filename
+        observations=0; municipalities=0
+        if p.exists():
+            try:
+                raw=json.loads(p.read_text(encoding="utf-8"))
+                feats=raw.get("features") or []
+                observations=len(feats)
+                municipalities=len({str((x.get("properties") or {}).get("municipio_id","")) for x in feats if (x.get("properties") or {}).get("municipio_id")})
+            except Exception:
+                pass
+        validation=CLIMATE_LAYER_VALIDATION.get(key,{"validated":False,"reason":"camada sem validação explícita"})
+        statewide_ready=bool(p.exists() and validation.get("validated",False) and municipalities>=184)
         climates[key]={
-            "available":bool(p.exists() and validation.get("validated",True)),
-            "local_layer":p.exists(),
-            "scientific_validated":bool(validation.get("validated",True)),
-            "reason":validation.get("reason"),
+            "file_present":p.exists(),"observations":observations,"municipalities_covered":municipalities,
+            "scientific_validated":bool(validation.get("validated",False)),
+            "statewide_analytical_ready":statewide_ready,
+            "point_overlay_ready":bool(p.exists() and observations>0 and validation.get("validated",False)),
+            "reason":validation.get("reason") or (None if statewide_ready else "cobertura insuficiente para superfície estadual"),
             "sources":CLIMATE_SOURCE_BINDINGS.get(key,[]),
         }
+
     gwr=[]
     for manifest in sorted(_runtime_gwr_dir().glob("manifest_*.json")):
         try:
             product=json.loads(manifest.read_text(encoding="utf-8"))
-            if _load_persisted_gwr_product(product.get("disease_key",""),int(product.get("year")),product.get("predictors") or []):
-                gwr.append({"disease_key":product.get("disease_key"),"year":product.get("year"),
-                            "predictors":product.get("predictors"),"records_used":product.get("records_used"),
+            year=int(product.get("year"))
+            predictors=product.get("predictors") or []
+            if _load_persisted_gwr_product(product.get("disease_key",""),year,predictors):
+                gwr.append({"disease_key":product.get("disease_key"),"year":year,
+                            "predictors":predictors,"records_used":product.get("records_used"),
                             "prepared_at":product.get("prepared_at")})
         except Exception:
             continue
+
+    diseases={}
+    for key in DISEASE_CATALOG:
+        path=_resolve_disease_csv_path(key)
+        diseases[key]={"local_observed_file":str(path.relative_to(Path(__file__).parent)) if path else None,
+                       "local_analytical_ready":bool(path)}
+
     methods={
-        "choropleth":{"available":True,"requires":["epidemiologia municipal observada"]},
-        "kernel":{"available":True,"requires":["epidemiologia municipal observada"]},
-        "heat":{"available":True,"requires":["epidemiologia municipal observada"]},
-        "density":{"available":True,"requires":["epidemiologia municipal observada"]},
-        "moran":{"available":True,"requires":["epidemiologia municipal observada","variação espacial"]},
-        "series":{"available":True,"requires":["epidemiologia município-ano observada"]},
-        "overlay":{"available":True,"requires":["epidemiologia municipal observada","somente camadas ambientais validadas entram como dado científico"]},
-        "gwr":{"available":bool(gwr),"prepared_signatures":gwr,
-               "rule":"GWR só funciona para assinaturas pré-calculadas e persistidas; não há imputação nem ajuste pesado no clique"},
+        "choropleth":{"implemented":True,"requires":"dados municipais observados"},
+        "kernel":{"implemented":True,"requires":"dados municipais observados; KDE ponderada por casos em CRS métrico"},
+        "heat":{"implemented":True,"requires":"dados municipais observados; superfície suavizada mascarada ao território"},
+        "density":{"implemented":True,"requires":"dados municipais observados; casos/km²"},
+        "moran":{"implemented":True,"requires":"dados municipais observados com variação; Queen + LISA 999 permutações"},
+        "series":{"implemented":True,"requires":"duas ou mais colunas anuais observadas"},
+        "overlay":{"implemented":True,"requires":"mapa epidemiológico + observações climáticas validadas; dados esparsos permanecem pontos"},
+        "gwr":{"implemented":True,"prepared_signatures":gwr,
+               "requires":"assinatura persistida agravo+ano+preditores; nenhum GWR arbitrário no clique"},
     }
-    return jsonify({"ok":True,"methods":methods,"climates":climates,
-                    "cartography":{"available":DEFAULT_PERNAMBUCO_CARTOGRAPHY.exists(),"source":"IBGE municipal"},
-                    "rule":"Disponibilidade significa dado local/persistido e cientificamente validado; fonte remota cadastrada não equivale a camada histórica pronta."}),200
+    return jsonify({"ok":True,"methods":methods,"climates":climates,"diseases":diseases,
+                    "cartography":{"available":DEFAULT_PERNAMBUCO_CARTOGRAPHY.exists(),"source":"IBGE municipal","analysis_crs":"EPSG:31985"},
+                    "rules":["fonte remota acessível não significa dado analítico pronto",
+                             "nenhuma interpolação estadual a partir de cobertura climática pontual insuficiente",
+                             "nenhuma imputação temporal retroativa de APAC",
+                             "produtos são habilitados pela compatibilidade entre dado, período, território e método"]}),200
 
 
 @app.get("/api/gwr/readiness/<disease_key>/<int:year>")
