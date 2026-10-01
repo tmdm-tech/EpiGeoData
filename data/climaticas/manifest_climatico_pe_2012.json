@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "year": 2012,
+  "prepared_at": "2026-10-01T16:22:48.451798+00:00",
+  "source": "INMET Dados Históricos Anuais",
+  "territory": "IBGE municípios de Pernambuco",
+  "grain": "municipio×ano",
+  "independent_of_disease": true,
+  "n_estacoes_inmet": 12,
+  "n_estacoes_utilizaveis": 12,
+  "n_municipios": 185,
+  "temperatura_municipios": 184,
+  "precipitacao_municipios": 184,
+  "method": "IDW p=2 em EPSG:31985; 3-6 estações; raio máximo 300 km; sem APAC retroativa"
+}
