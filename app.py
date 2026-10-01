@@ -178,15 +178,6 @@ def _resolve_climate_source_file(filename: str) -> Path | None:
 
     return None
 
-DISEASE_FILE_ALIASES = {
-    "dengue": ["dengue"],
-    "esquistossomose": ["esquistossomose"],
-    "tuberculose": ["tuberculose"],
-    "chikungunya": ["chikungunya"],
-    "scz": ["scz", "sindrome_congenita_da_zika", "sindrome_congenita_zika", "zika"],
-}
-
-
 def _normalize_token(value: str) -> str:
     value = value.strip().lower()
     value = re.sub(r"\s+", "_", value)
@@ -1339,33 +1330,89 @@ def _inmet_annual_station_summary(year: int) -> list[dict]:
     REALTIME_CACHE[key]=(time.time(),{"rows":rows})
     return rows
 
-def _disease_year_by_ibge(disease_key: str, year: int) -> tuple[dict[str,float],str]:
-    from scripts.generate_choropleth_brazil import resolve_disease_csv, normalize_text
-    resolved,csv_path=resolve_disease_csv(disease_key)
-    if csv_path is None: raise FileNotFoundError(f"Sem CSV epidemiológico local para {resolved}")
-    frame=None
-    decode_error=None
+def _read_epidemiology_frame(disease_key: str):
+    """Read any configured local epidemiological table and discover its year columns."""
+    import pandas as pd
+    resolved=_resolve_disease_key(disease_key)
+    if not resolved:
+        raise ValueError(f"Agravo não reconhecido: {disease_key}")
+    csv_path=_resolve_disease_csv_path(resolved)
+    if csv_path is None:
+        raise FileNotFoundError(f"Sem série epidemiológica municipal local para {resolved}")
+    frame=None; last=None
     for encoding in ("utf-8-sig","latin-1","cp1252"):
         try:
-            import pandas as pd
             frame=pd.read_csv(csv_path,sep=";",skiprows=3,dtype=str,encoding=encoding)
             break
         except UnicodeDecodeError as exc:
-            decode_error=exc
+            last=exc
     if frame is None:
-        raise UnicodeDecodeError("epidemiology",b"",0,1,f"Não foi possível decodificar {csv_path}: {decode_error}")
-    year_col=str(year)
-    if year_col not in frame.columns: raise ValueError(f"{resolved}: ano {year} indisponível")
-    name_col=frame.columns[0]
+        raise ValueError(f"Não foi possível ler {csv_path}: {last}")
+    years=sorted(int(str(col).strip()) for col in frame.columns if re.fullmatch(r"(19|20)\d{2}",str(col).strip()))
+    return resolved,csv_path,frame,years
+
+
+def _epidemiology_temporal_catalog() -> dict[str,dict]:
+    """Disease-neutral inventory of observed local municipal series."""
+    result={}
+    for disease_key,meta in DISEASE_CATALOG.items():
+        try:
+            resolved,path,frame,years=_read_epidemiology_frame(disease_key)
+            result[disease_key]={
+                "disease_key":resolved,"display_name":meta["display_name"],
+                "available":bool(years),"years":years,
+                "start_year":min(years) if years else None,"end_year":max(years) if years else None,
+                "source_file":str(path.relative_to(Path(__file__).parent)),
+                "municipal_rows":int(len(frame)),
+            }
+        except (ValueError,FileNotFoundError):
+            result[disease_key]={"disease_key":disease_key,"display_name":meta["display_name"],
+                                 "available":False,"years":[],"start_year":None,"end_year":None,
+                                 "source_file":None,"municipal_rows":0}
+    return result
+
+
+def _prepared_climate_years() -> list[int]:
+    root=Path(__file__).parent/"data"/"climaticas"
+    years=[]
+    for p in root.glob("manifest_climatico_pe_*.json"):
+        m=re.search(r"(19|20)\d{2}",p.stem)
+        if m and (root/f"painel_climatico_pe_{m.group(0)}.csv").exists():
+            years.append(int(m.group(0)))
+    return sorted(set(years))
+
+
+def _load_or_build_historical_climate_panel(year: int, allow_build: bool=False):
+    """Disease-independent climate dimension. Production reads prepared panels."""
+    import pandas as pd
+    root=Path(__file__).parent/"data"/"climaticas"
+    panel=root/f"painel_climatico_pe_{int(year)}.csv"
+    manifest=root/f"manifest_climatico_pe_{int(year)}.json"
+    if panel.exists() and manifest.exists():
+        return pd.read_csv(panel,dtype={"municipio_ibge":str}),json.loads(manifest.read_text(encoding="utf-8"))
+    if not allow_build:
+        raise FileNotFoundError(f"Painel climático município-ano {year} ainda não preparado")
+    frame,meta=_historical_climate_municipal_panel(year)
+    return frame,meta
+
+
+def _disease_year_by_ibge(disease_key: str, year: int) -> tuple[dict[str,float],str]:
+    from scripts.generate_choropleth_brazil import normalize_text
+    resolved,csv_path,frame,years=_read_epidemiology_frame(disease_key)
+    if int(year) not in years:
+        raise ValueError(f"{resolved}: ano {year} indisponível; anos observados: {min(years) if years else '-'}–{max(years) if years else '-'}")
+    year_col=str(int(year)); name_col=frame.columns[0]
     values={}
     for _,row in frame.iterrows():
         raw=str(row.get(year_col,"")).strip().replace(",",".")
-        if raw in ("","-","...","nan"): continue
+        if raw in ("","-","...","nan","None"): continue
         try: value=float(raw)
         except ValueError: continue
         label=re.sub(r"^\d{6,7}\s+","",str(row[name_col])).strip()
         values[normalize_text(label)]=value
     return values,str(csv_path)
+
+
 
 
 def _runtime_gwr_dir() -> Path:
@@ -1539,7 +1586,7 @@ def _build_runtime_gwr_panel(disease_key: str, year: int, predictors: list[str])
     allowed={"temperatura_media_c","precipitacao_anual_mm"}
     if not predictors or any(p not in allowed for p in predictors):
         raise ValueError("Preditores GWR válidos: temperatura_media_c, precipitacao_anual_mm")
-    climate,climate_meta=_historical_climate_municipal_panel(year)
+    climate,climate_meta=_load_or_build_historical_climate_panel(year,allow_build=False)
     epi,epi_path=_disease_year_by_ibge(disease_key,year)
     gdf=load_pernambuco_municipalities().to_crs("EPSG:4674").copy()
     climate_by_code={str(r["municipio_ibge"]).replace(".0",""):r for _,r in climate.iterrows()}
@@ -1566,6 +1613,31 @@ def _build_runtime_gwr_panel(disease_key: str, year: int, predictors: list[str])
           "method":"INMET anual + IDW municipal multie­stação validado; somente casos completos; sem APAC retroativa",
           "climate_panel":climate_meta}
     return frame,meta
+
+
+@app.get("/api/infrastructure/catalog")
+def infrastructure_catalog():
+    """Canonical geospatial cube: territory × time × theme, independent of disease."""
+    epi=_epidemiology_temporal_catalog()
+    climate_years=_prepared_climate_years()
+    compatibility={}
+    for key,item in epi.items():
+        overlap=sorted(set(item["years"]) & set(climate_years))
+        compatibility[key]={
+            "epidemiology_years":item["years"],"climate_years_prepared":climate_years,
+            "climate_epidemiology_overlap":overlap,
+            "spatial_products_years":item["years"],
+            "climate_overlay_years":overlap,
+            "gwr_candidate_years":overlap,
+        }
+    return jsonify({
+        "schema_version":2,
+        "territory":{"source":"IBGE Malha Municipal","ibge_code":"7 dígitos","storage_crs":"EPSG:4674","analysis_crs":"EPSG:31985","municipalities":184},
+        "climate":{"source":"INMET Dados Históricos Anuais","grain":"municipio×ano","prepared_years":climate_years,
+                   "current_precipitation":"APAC/SIRH separado do histórico"},
+        "epidemiology":epi,"compatibility":compatibility,
+        "rule":"Nenhum agravo ou ano é canônico. Produtos resultam da interseção entre território, período, dado temático e requisitos do método."
+    }),200
 
 
 @app.get("/api/climate/historical/<int:year>")
