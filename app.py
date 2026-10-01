@@ -1458,37 +1458,113 @@ def _scope_geojson_from_persisted(product: dict, display_ibge_codes: set[str] | 
     published=_publish_runtime_artifact(target)
     return "/static/"+published.relative_to(Path(__file__).parent/"static").as_posix()
 
+def _historical_climate_municipal_panel(year: int) -> tuple[Any,dict]:
+    """Interpolate annual INMET station summaries to all PE municipal centroids.
+
+    IDW is performed in SIRGAS 2000 / UTM 25S. A municipal estimate is accepted
+    only with >=3 valid stations inside 300 km. Station values remain observed;
+    only the municipality-level spatial support is interpolated.
+    """
+    import pandas as pd
+    import geopandas as gpd
+    import numpy as np
+    from scripts.generate_choropleth_brazil import load_pernambuco_municipalities
+
+    stations=_inmet_annual_station_summary(year)
+    # Annual completeness gates: temperature is hourly, rainfall hourly/accumulated.
+    usable=[]
+    for s in stations:
+        t=s.get("temperatura_media_c"); p=s.get("precipitacao_anual_mm")
+        nt=int(s.get("n_temperatura") or 0); npcp=int(s.get("n_precipitacao") or 0)
+        if t is None and p is None: continue
+        usable.append({**s,"temperatura_ok":bool(t is not None and nt>=24*180),
+                       "precipitacao_ok":bool(p is not None and npcp>=180)})
+    if len(usable)<3:
+        raise RuntimeError(f"INMET {year}: menos de 3 estações anuais utilizáveis para interpolação")
+
+    sgdf=gpd.GeoDataFrame(usable,geometry=gpd.points_from_xy([x["lon"] for x in usable],[x["lat"] for x in usable]),crs="EPSG:4674").to_crs("EPSG:31985")
+    mgdf=load_pernambuco_municipalities().to_crs("EPSG:31985").copy()
+    rows=[]
+    for _,m in mgdf.iterrows():
+        centroid=m.geometry.centroid
+        distances=sgdf.geometry.distance(centroid)/1000.0
+        order=np.argsort(distances.to_numpy())
+        row={"municipio_ibge":str(m["codigo_ibge"]).replace(".0",""),"ano":int(year)}
+        diagnostics={}
+        for field,okfield in (("temperatura_media_c","temperatura_ok"),("precipitacao_anual_mm","precipitacao_ok")):
+            candidates=[]
+            for idx in order:
+                s=sgdf.iloc[int(idx)]; d=float(distances.iloc[int(idx)])
+                if d>300: continue
+                if not bool(s[okfield]): continue
+                candidates.append((d,float(s[field]),str(s["estacao"])))
+                if len(candidates)>=6: break
+            if len(candidates)<3:
+                row[field]=None
+                diagnostics[field]={"n_estacoes":len(candidates),"max_distance_km":None,"method":"unavailable"}
+                continue
+            exact=[x for x in candidates if x[0]<0.1]
+            if exact:
+                estimate=exact[0][1]
+            else:
+                weights=np.array([1.0/max(x[0],1.0)**2 for x in candidates],dtype=float)
+                vals=np.array([x[1] for x in candidates],dtype=float)
+                estimate=float(np.sum(weights*vals)/np.sum(weights))
+            row[field]=estimate
+            diagnostics[field]={"n_estacoes":len(candidates),
+                                "nearest_distance_km":round(min(x[0] for x in candidates),2),
+                                "max_distance_km":round(max(x[0] for x in candidates),2),
+                                "stations":[x[2] for x in candidates],
+                                "method":"IDW p=2; até 6 estações; raio máximo 300 km"}
+        row["climate_diagnostics"]=json.dumps(diagnostics,ensure_ascii=False)
+        row["climate_provenance"]=json.dumps({
+            "organization":"INMET","dataset":"Dados Históricos Anuais - estações automáticas",
+            "version":str(year),"retrieved_at":datetime.utcnow().strftime("%Y-%m-%d"),
+            "reference_url":f"https://portal.inmet.gov.br/uploads/dadoshistoricos/{year}.zip",
+            "method":"agregação anual observada por estação + IDW municipal em EPSG:31985; p=2; 3-6 estações; raio <=300 km; controle mínimo de completude",
+            "verified":True},ensure_ascii=False)
+        rows.append(row)
+    frame=pd.DataFrame(rows)
+    meta={"year":year,"n_estacoes_inmet":len(stations),"n_estacoes_utilizaveis":len(usable),
+          "n_municipios":len(frame),
+          "temperatura_municipios":int(frame["temperatura_media_c"].notna().sum()),
+          "precipitacao_municipios":int(frame["precipitacao_anual_mm"].notna().sum()),
+          "method":"IDW p=2 em EPSG:31985; 3-6 estações; raio máximo 300 km; sem APAC retroativa"}
+    return frame,meta
+
+
 def _build_runtime_gwr_panel(disease_key: str, year: int, predictors: list[str]) -> tuple[Any,dict]:
     import pandas as pd
     from scripts.generate_choropleth_brazil import load_pernambuco_municipalities, normalize_text
     allowed={"temperatura_media_c","precipitacao_anual_mm"}
     if not predictors or any(p not in allowed for p in predictors):
         raise ValueError("Preditores GWR válidos: temperatura_media_c, precipitacao_anual_mm")
-    stations=_inmet_annual_station_summary(year)
+    climate,climate_meta=_historical_climate_municipal_panel(year)
     epi,epi_path=_disease_year_by_ibge(disease_key,year)
     gdf=load_pernambuco_municipalities().to_crs("EPSG:4674").copy()
-    import math
+    climate_by_code={str(r["municipio_ibge"]).replace(".0",""):r for _,r in climate.iterrows()}
     panel=[]
     for _,feature in gdf.iterrows():
         name=normalize_text(feature.get("name_muni",""))
         outcome=epi.get(name)
         if outcome is None: continue
-        centroid=feature.geometry.centroid
-        usable=[s for s in stations if all(s.get(p) is not None for p in predictors)]
-        if not usable: continue
-        station=min(usable,key=lambda s:(s["lat"]-centroid.y)**2+(s["lon"]-centroid.x)**2)
-        row={"municipio_ibge":str(feature["codigo_ibge"]),"ano":int(year),"desfecho":float(outcome),
-             **{p:float(station[p]) for p in predictors},
-             "estacao_inmet":station["estacao"],
+        code=str(feature["codigo_ibge"]).replace(".0","")
+        clim=climate_by_code.get(code)
+        if clim is None or any(pd.isna(clim.get(p)) for p in predictors): continue
+        row={"municipio_ibge":code,"ano":int(year),"desfecho":float(outcome),
+             **{p:float(clim[p]) for p in predictors},
+             "climate_diagnostics":clim["climate_diagnostics"],
              "epidemiology_provenance":json.dumps({"organization":"DATASUS","dataset":disease_key,"version":str(year),"retrieved_at":datetime.utcnow().strftime("%Y-%m-%d"),"reference_url":TABNET_PORTAL_URL,"method":"município-ano; arquivo TABNET da plataforma","verified":True},ensure_ascii=False),
-             "climate_provenance":json.dumps({"organization":"INMET","dataset":"Dados Históricos Anuais - estações automáticas","version":str(year),"retrieved_at":datetime.utcnow().strftime("%Y-%m-%d"),"reference_url":station["source_url"],"method":"agregação anual da estação automática mais próxima ao centróide municipal; sem imputação","verified":True},ensure_ascii=False),
+             "climate_provenance":clim["climate_provenance"],
              "territory_provenance":json.dumps({"organization":"IBGE","dataset":"Malha Municipal Digital","version":"2025","retrieved_at":datetime.utcnow().strftime("%Y-%m-%d"),"reference_url":"https://www.ibge.gov.br/geociencias/organizacao-do-territorio/estrutura-territorial/15774-malhas","method":"código municipal oficial e geometria SIRGAS 2000","verified":True},ensure_ascii=False)}
         panel.append(row)
     frame=pd.DataFrame(panel)
     if len(frame) < max(30,len(predictors)+10):
         raise RuntimeError(f"Cobertura insuficiente para GWR: {len(frame)} municípios completos")
-    meta={"n_municipios":len(frame),"n_estacoes_inmet":len(stations),"epidemiology_file":epi_path,
-          "method":"INMET anual; estação automática mais próxima ao centróide; somente casos completos; sem imputação"}
+    meta={"n_municipios":len(frame),"n_estacoes_inmet":climate_meta["n_estacoes_inmet"],
+          "epidemiology_file":epi_path,
+          "method":"INMET anual + IDW municipal multie­stação validado; somente casos completos; sem APAC retroativa",
+          "climate_panel":climate_meta}
     return frame,meta
 
 
