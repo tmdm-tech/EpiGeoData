@@ -1482,6 +1482,47 @@ def _build_runtime_gwr_panel(disease_key: str, year: int, predictors: list[str])
     return frame,meta
 
 
+@app.get("/api/scientific/readiness")
+def scientific_readiness():
+    """Single source of truth for UI availability; reports only real persisted/local data."""
+    climate_dir=Path(__file__).parent/"data"/"climaticas"
+    climates={}
+    for key,layer in CLIMATE_LAYER_BINDINGS.items():
+        validation=CLIMATE_LAYER_VALIDATION.get(key,{"validated":True})
+        p=climate_dir/f"{layer}.geojson"
+        climates[key]={
+            "available":bool(p.exists() and validation.get("validated",True)),
+            "local_layer":p.exists(),
+            "scientific_validated":bool(validation.get("validated",True)),
+            "reason":validation.get("reason"),
+            "sources":CLIMATE_SOURCE_BINDINGS.get(key,[]),
+        }
+    gwr=[]
+    for manifest in sorted(_runtime_gwr_dir().glob("manifest_*.json")):
+        try:
+            product=json.loads(manifest.read_text(encoding="utf-8"))
+            if _load_persisted_gwr_product(product.get("disease_key",""),int(product.get("year")),product.get("predictors") or []):
+                gwr.append({"disease_key":product.get("disease_key"),"year":product.get("year"),
+                            "predictors":product.get("predictors"),"records_used":product.get("records_used"),
+                            "prepared_at":product.get("prepared_at")})
+        except Exception:
+            continue
+    methods={
+        "choropleth":{"available":True,"requires":["epidemiologia municipal observada"]},
+        "kernel":{"available":True,"requires":["epidemiologia municipal observada"]},
+        "heat":{"available":True,"requires":["epidemiologia municipal observada"]},
+        "density":{"available":True,"requires":["epidemiologia municipal observada"]},
+        "moran":{"available":True,"requires":["epidemiologia municipal observada","variação espacial"]},
+        "series":{"available":True,"requires":["epidemiologia município-ano observada"]},
+        "overlay":{"available":True,"requires":["epidemiologia municipal observada","somente camadas ambientais validadas entram como dado científico"]},
+        "gwr":{"available":bool(gwr),"prepared_signatures":gwr,
+               "rule":"GWR só funciona para assinaturas pré-calculadas e persistidas; não há imputação nem ajuste pesado no clique"},
+    }
+    return jsonify({"ok":True,"methods":methods,"climates":climates,
+                    "cartography":{"available":DEFAULT_PERNAMBUCO_CARTOGRAPHY.exists(),"source":"IBGE municipal"},
+                    "rule":"Disponibilidade significa dado local/persistido e cientificamente validado; fonte remota cadastrada não equivale a camada histórica pronta."}),200
+
+
 @app.get("/api/gwr/readiness/<disease_key>/<int:year>")
 def gwr_readiness(disease_key: str, year: int):
     predictors=[p for p in request.args.get("predictors","temperatura_media_c,precipitacao_anual_mm").split(",") if p]
