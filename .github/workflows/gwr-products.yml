@@ -40,6 +40,9 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    concurrency:
+      group: gwr-products-prepare
+      cancel-in-progress: true
     env:
       MPLBACKEND: Agg
       EPIGEODATA_DISABLE_GWR_PREWARM: "1"
