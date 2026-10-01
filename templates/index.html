@@ -1448,7 +1448,7 @@
                 </div>
                 <div class="demo-actions">
                   <select id="analysisModeSelect" aria-label="Método de análise espacial">
-                    <option value="gwr">GWR (principal)</option>
+                    <option value="gwr">GWR (assinatura validada)</option>
                     <option value="overlay">Sobreposição multivariada</option>
                     <option value="heat">Mapa de calor</option>
                     <option value="kernel">Kernel</option>
@@ -4200,9 +4200,6 @@
       async function downloadProfessionalMapFromBackend() {
         // O download deve ser exatamente o mapa produzido pela selecao atual,
         // e nao uma segunda renderizacao generica da rota /download.
-        if (selectedDemoMode === "series") {
-          throw new Error("Série temporal não é um mapa cartográfico 300 dpi.");
-        }
         if (!lastProfessionalMapUrl || lastProfessionalMapSignature !== currentProfessionalMapSignature()) {
           await generateProfessionalOverlayMap(institutionalProfessionalMapTitle);
         }
@@ -4211,7 +4208,7 @@
         const safeMode = String(selectedDemoMode || "overlay").replace(/[^a-z0-9_-]+/gi, "_");
         await downloadBlobFile(
           lastProfessionalMapUrl,
-          "mapa_cartografico_" + diseaseKey + "_" + safeMode + "_300dpi.png"
+          (selectedDemoMode === "series" ? "serie_temporal_" : "mapa_cartografico_") + diseaseKey + "_" + safeMode + "_300dpi.png"
         );
       }
 
@@ -4259,6 +4256,30 @@
         });
       });
 
+      let scientificReadiness = null;
+      async function loadScientificReadiness() {
+        try {
+          const response=await fetch("/api/scientific/readiness",{cache:"no-store"});
+          if(!response.ok) return;
+          scientificReadiness=await response.json();
+          const gwrOption=analysisModeSelect.querySelector('option[value="gwr"]');
+          const prepared=scientificReadiness?.methods?.gwr?.prepared_signatures || [];
+          if(gwrOption) gwrOption.textContent=prepared.length
+            ? "GWR ("+prepared.length+" assinatura validada)"
+            : "GWR (sem produto preparado)";
+          document.querySelectorAll("[data-climate]").forEach((el)=>{
+            const key=el.dataset.climate;
+            const status=scientificReadiness?.climates?.[key];
+            if(!status) return;
+            el.title=status.statewide_analytical_ready
+              ? "Cobertura estadual validada"
+              : status.point_overlay_ready
+                ? "Observações pontuais disponíveis; sem interpolação estadual"
+                : "Camada ainda não validada para análise científica";
+          });
+        } catch (_) {}
+      }
+
       function scheduleMapBootstrap() {
         ensureMapReady().catch(() => {
           updateRobotMessage("Nao foi possivel carregar o mapa externo agora. Verifique a conexao.");
@@ -4268,6 +4289,7 @@
       // Bootstrap only Leaflet + official local Pernambuco cartography.
       // No scientific product is generated here.
       scheduleMapBootstrap();
+      loadScientificReadiness();
 
       fillGeresSelect();
       selectedYears.add(2026);
