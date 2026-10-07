@@ -1459,8 +1459,8 @@
                 </div>
                 <div class="demo-actions">
                   <select id="analysisModeSelect" aria-label="Método de análise espacial">
+                    <option value="overlay" selected>Sobreposição multivariada</option>
                     <option value="gwr">GWR (assinatura validada)</option>
-                    <option value="overlay">Sobreposição multivariada</option>
                     <option value="heat">Mapa de calor</option>
                     <option value="kernel">Kernel</option>
                     <option value="density">Densidade</option>
@@ -1725,7 +1725,7 @@
       let spatialMunicipalPayload = null;
       let lastDemoImageDataUrl = "";
       let lastDemoLabel = "camada inicial";
-      let selectedDemoMode = "gwr";
+      let selectedDemoMode = "overlay";
       let mapReadyPromise = null;
       let legendControl = null;
       let gwrMarkerLayer = null;
@@ -3759,7 +3759,7 @@
             const overlayTask = selectedClimates.size > 0 && !["gwr","series"].includes(selectedDemoMode)
               ? generateOverlay({ skipProfessional: true })
               : Promise.resolve();
-            const professionalTask = selectedYears.size > 0
+            const professionalTask = ["gwr","series"].includes(selectedDemoMode) && selectedYears.size > 0
               ? generateProfessionalOverlayMap(institutionalProfessionalMapTitle, serial)
               : Promise.resolve();
             await Promise.allSettled([overlayTask, professionalTask]);
@@ -4312,7 +4312,8 @@
           infrastructureCatalog=await response.json();
           reconcileYearsWithInfrastructure({selectLatest:true});
           updateSelectionStatus();
-          if(selectedYears.size>0) autoGenerateIfReady();
+          // Do not launch a heavyweight renderer during page bootstrap. The
+          // interactive preview is generated after an explicit scientific selection.
         } catch (_) {}
       }
 
