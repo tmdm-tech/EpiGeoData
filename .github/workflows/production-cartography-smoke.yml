@@ -59,6 +59,16 @@ jobs:
           assert status==200 and web_bundle["summary"]["total_municipios"] in (184,185),web_bundle["summary"]
           assert web_bundle["summary"]["simplified"] is True
           assert len(web_geo)<3_500_000,f"web cartography still too large: {len(web_geo)} bytes"
+          status,layers_raw=get("/api/climate-layers")
+          layers=json.loads(layers_raw)
+          assert "aguardando_dado_oficial_validado" not in layers_raw.decode("utf-8")
+          by_type={x["tipo"]:x for x in layers["camadas"]}
+          for key in ("temperatura","precipitacao"):
+              assert by_type[key]["scientific_validated"] is True
+              assert 2024 in by_type[key]["available_years"]
+              status,hist_raw=get(f"/api/climate-layers/{key}?year=2024")
+              hist=json.loads(hist_raw)
+              assert status==200 and hist["scientific_validated"] is True and hist["coverage"]>=184
 
           def map_product(mode,years,climates=None):
               body=post("/api/maps/professional-overlay",{
