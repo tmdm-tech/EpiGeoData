@@ -1247,7 +1247,14 @@
       .status-badge.disponivel { background: rgba(76,175,80,0.2); color: #81c784; }
       .status-badge.pendente   { background: rgba(255,152,0,0.2);  color: #ffb74d; }
     .methodology-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.methodology-grid div{border:1px solid rgba(190,150,255,.24);border-radius:10px;padding:12px;background:rgba(28,17,48,.48)}.methodology-grid strong{display:block;color:#f0ddff;margin-bottom:5px}.methodology-grid span{font-size:12px;line-height:1.5;color:rgba(244,235,255,.78)}@media(max-width:760px){.methodology-grid{grid-template-columns:1fr}}
-    </style>
+    
+      /* Scientific product is the primary visualization; controls remain compact. */
+      .professional-map-preview.visible{display:block;width:100%;height:auto;max-height:720px;object-fit:contain;background:#fff;border-radius:10px;}
+      .demo-panel:has(.professional-map-preview.visible) #demoCanvas{display:none!important;}
+      .demo-panel{background:#160d2b;border:1px solid rgba(164,118,255,.35);border-radius:14px;padding:10px;}
+      .demo-meta{display:grid;gap:6px;margin-top:8px;}
+      .demo-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+</style>
   </head>
   <body>
     <main>
@@ -1994,7 +2001,7 @@
           let html = "";
           for (const camada of camadas) {
             const label = tipoLabel[camada.tipo] || camada.tipo;
-            const layerStatus = camada.status;   // "disponivel" | "indisponivel"
+            const layerStatus = camada.scientific_validated ? "disponivel" : "indisponivel"
             html += `<div style="margin-bottom:8px;">
               <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px;">${label}</div>`;
 
@@ -2002,7 +2009,7 @@
             html += `<div class="climate-source-row">
               <span class="status-dot ${layerStatus}"></span>
               <span class="source-label">GeoJSON da camada (${camada.layer}.geojson)</span>
-              <span class="status-badge ${layerStatus}">${layerStatus}</span>
+              <span class="status-badge ${layerStatus}">${camada.status}</span>
             </div>`;
 
             // Arquivos-fonte originais
@@ -2031,17 +2038,20 @@
           return null;
         }
 
-        if (climateGeojsonCache.has(key)) {
-          return climateGeojsonCache.get(key);
+        const years=Array.from(selectedYears).map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
+        const historical=(key==="precipitacao" || key==="temperatura") && years.length===1;
+        const cacheKey=historical ? key+":"+years[0] : key;
+        if (climateGeojsonCache.has(cacheKey)) {
+          return climateGeojsonCache.get(cacheKey);
         }
 
-        const response = await fetch("/api/climate-layers/" + key);
+        const response = await fetch("/api/climate-layers/" + key + (historical ? "?year="+years[0] : ""));
         if (!response.ok) {
           return null;
         }
 
         const payload = await response.json();
-        climateGeojsonCache.set(key, payload);
+        climateGeojsonCache.set(cacheKey, payload);
         return payload;
       }
 
@@ -3758,7 +3768,7 @@
             const overlayTask = selectedClimates.size > 0 && !["gwr","series"].includes(selectedDemoMode)
               ? generateOverlay({ skipProfessional: true })
               : Promise.resolve();
-            const professionalTask = ["gwr","series"].includes(selectedDemoMode)
+            const professionalTask = selectedYears.size > 0
               ? generateProfessionalOverlayMap(institutionalProfessionalMapTitle, serial)
               : Promise.resolve();
             await Promise.allSettled([overlayTask, professionalTask]);
@@ -4075,6 +4085,7 @@
             renderYearButtons();
             updateSelectionStatus();
             refreshDemonstratorFromSelection("anos atualizados");
+            autoGenerateIfReady();
           });
         });
       }
@@ -4086,6 +4097,7 @@
         renderYearButtons();
         updateSelectionStatus();
         refreshDemonstratorFromSelection("anos atualizados");
+        autoGenerateIfReady();
       });
 
       clearYearsBtn.addEventListener("click", () => {
@@ -4093,6 +4105,7 @@
         renderYearButtons();
         updateSelectionStatus();
         refreshDemonstratorFromSelection("anos atualizados");
+        autoGenerateIfReady();
       });
 
       socioVariableSelect.addEventListener("change", () => {
@@ -4100,6 +4113,7 @@
         updateSelectionStatus();
         const label = socioMetadata[selectedSocioVariable].label;
         refreshDemonstratorFromSelection("variavel IBGE atualizada");
+        autoGenerateIfReady();
         updateRobotMessage("Variável sociodemográfica ativa: <b>" + label + "</b>.");
       });
 
@@ -4107,6 +4121,7 @@
         selectedSocioScope = socioScopeSelect.value;
         updateSelectionStatus();
         refreshDemonstratorFromSelection("escopo IBGE atualizado");
+        autoGenerateIfReady();
         updateRobotMessage(
           "Escopo sociodemográfico ativo: <b>" +
             (selectedSocioScope === "geres" ? "Nível GERES" : "Municipal geral") +
@@ -4134,6 +4149,7 @@
         robotWiggleEarring();
         updateSelectionStatus();
         refreshDemonstratorFromSelection("GERES atualizada");
+        autoGenerateIfReady();
         updateRobotMessage("GERES selecionada: <b>" + (activeGeres === "ALL" ? "Todas as GERES" : activeGeres) + "</b>.");
       });
 
@@ -4148,6 +4164,7 @@
         refreshLayerPanel();
         updateSelectionStatus();
         refreshDemonstratorFromSelection("municipio atualizado");
+        autoGenerateIfReady();
         if (municipioId) {
           robotSmile();
           updateRobotMessage("Municipio selecionado: <b>" + municipioLabel + "</b>.");
@@ -4169,6 +4186,7 @@
         lastProfessionalMapSignature = "";
         professionalMapStatus.innerHTML = "<strong>Cartografia:</strong> atualizando " + describeMode(selectedDemoMode) + "...";
         refreshDemonstratorFromSelection("metodo atualizado");
+        autoGenerateIfReady();
       });
 
       downloadDemoImageBtn.addEventListener("click", async () => {
@@ -4303,6 +4321,7 @@
           infrastructureCatalog=await response.json();
           reconcileYearsWithInfrastructure({selectLatest:true});
           updateSelectionStatus();
+          if(selectedYears.size>0) autoGenerateIfReady();
         } catch (_) {}
       }
 
