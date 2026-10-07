@@ -1209,85 +1209,84 @@ def export_spreadsheet():
 
 
 @app.get("/api/climate-layers/<climate_type>")
-def get_climate_layers(climate_type: str) -> tuple[dict, int]:
-    """Retorna dados climáticos em GeoJSON"""
-    valid_types = ["precipitacao", "temperatura", "queimadas", "cobertura_vegetal", "relevo"]
-    
+def get_climate_layers(climate_type: str):
+    """Serve validated climate dimensions; historical INMET panels take precedence."""
+    valid_types=set(CLIMATE_LAYER_BINDINGS)
     if climate_type not in valid_types:
-        return {"error": f"Tipo climático inválido. Use: {', '.join(valid_types)}"}, 400
-    
-    data_file = Path(__file__).parent / f"data/climaticas/{climate_type}.geojson"
+        return {"error":f"Tipo climático inválido. Use: {', '.join(sorted(valid_types))}"},400
+    year=request.args.get("year",type=int)
+    if climate_type in ("precipitacao","temperatura") and year is not None:
+        panel=Path(__file__).parent/"data"/"climaticas"/f"painel_climatico_pe_{year}.csv"
+        manifest=Path(__file__).parent/"data"/"climaticas"/f"manifest_climatico_pe_{year}.json"
+        if not panel.exists() or not manifest.exists():
+            return {"error":f"Painel INMET municipal validado indisponível para {year}","status":"indisponivel_para_periodo","year":year},404
+        import pandas as pd
+        frame=pd.read_csv(panel,dtype={"municipio_ibge":str})
+        column="precipitacao_anual_mm" if climate_type=="precipitacao" else "temperatura_media_c"
+        rows=[{"municipio_ibge":str(r["municipio_ibge"]).zfill(7),"value":None if pd.isna(r.get(column)) else float(r[column])} for _,r in frame.iterrows()]
+        meta=json.loads(manifest.read_text(encoding="utf-8"))
+        return jsonify({"tipo":climate_type,"year":year,"status":"disponivel","scientific_validated":True,
+                        "source":"INMET Dados Históricos Anuais","grain":"municipio×ano","column":column,
+                        "coverage":sum(x["value"] is not None for x in rows),"manifest":meta,"values":rows}),200
     validation=CLIMATE_LAYER_VALIDATION.get(climate_type,{"validated":True})
+    data_file=Path(__file__).parent/"data"/"climaticas"/f"{climate_type}.geojson"
     if not validation.get("validated",True):
-        return {"error": f"Camada {climate_type} bloqueada para uso científico", "status":"aguardando_dado_oficial_validado", "reason":validation.get("reason")}, 409
+        # A blocked legacy placeholder is not an asynchronous job. Report the
+        # truthful terminal state instead of an eternal "aguardando".
+        return {"error":f"Camada local legada {climate_type} não é produto científico",
+                "status":"indisponivel_sem_produto_oficial_validado",
+                "scientific_validated":False,"reason":validation.get("reason")},422
     if not data_file.exists():
-        return {"error": f"Dados não disponíveis para {climate_type}"}, 404
-    
-    with open(data_file, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    
-    return jsonify(data), 200
+        return {"error":f"Dados não disponíveis para {climate_type}","status":"indisponivel"},404
+    return jsonify(json.loads(data_file.read_text(encoding="utf-8"))),200
 
 
 @app.get("/api/climate-layers")
-def list_climate_layers() -> tuple[dict, int]:
-    """Lista todos os tipos de camadas climáticas disponíveis e suas fontes vinculadas."""
-    data_dir = Path(__file__).parent / "data/climaticas"
-
-    available = []
-    for climate_type, layer_name in CLIMATE_LAYER_BINDINGS.items():
-        file_path = data_dir / f"{layer_name}.geojson"
-        sources = []
-        for source_name in CLIMATE_SOURCE_BINDINGS.get(climate_type, []):
-            # source_name is provenance metadata, not a local filename.
-            # A previous implementation incorrectly searched for files literally
-            # named "INMET/BDMEP", "APAC/SIRH..." etc., leaving every official
-            # source permanently marked as pending.
-            sources.append(
-                {
-                    "name": source_name,
-                    "status": "disponivel",
-                    "provenance": "fonte oficial vinculada",
-                    "local_layer": file_path.exists(),
-                    "path": str(file_path.relative_to(Path(__file__).parent)) if file_path.exists() else None,
-                }
-            )
-
+def list_climate_layers():
+    """Readiness by dimension and period; never expose a permanent waiting state."""
+    data_dir=Path(__file__).parent/"data"/"climaticas"
+    prepared=_prepared_climate_years()
+    available=[]
+    for climate_type,layer_name in CLIMATE_LAYER_BINDINGS.items():
+        file_path=data_dir/f"{layer_name}.geojson"
         validation=CLIMATE_LAYER_VALIDATION.get(climate_type,{"validated":True})
-        item = {
-            "tipo": climate_type,
-            "layer": layer_name,
-            "url": f"/api/climate-layers/{layer_name}",
-            "status": ("disponivel" if file_path.exists() else "indisponivel") if validation.get("validated",True) else "aguardando_dado_oficial_validado",
-            "scientific_validated": bool(validation.get("validated",True)),
-            "validation_note": validation.get("reason"),
-            "sources": sources,
-        }
-        available.append(item)
-
-    return jsonify({"camadas": available, "total": len(available)}), 200
+        historical=climate_type in ("precipitacao","temperatura") and bool(prepared)
+        scientifically_ready=historical or (validation.get("validated",True) and file_path.exists())
+        if historical:
+            status="disponivel_historico_validado"
+            url=f"/api/climate-layers/{layer_name}?year={{year}}"
+        elif scientifically_ready:
+            status="disponivel"
+            url=f"/api/climate-layers/{layer_name}"
+        else:
+            status="indisponivel_sem_produto_oficial_validado"
+            url=None
+        sources=[{"name":name,"status":"disponivel" if scientifically_ready else "fonte_vinculada_sem_camada_analitica",
+                  "provenance":"fonte oficial vinculada","local_layer":file_path.exists()}
+                 for name in CLIMATE_SOURCE_BINDINGS.get(climate_type,[])]
+        available.append({"tipo":climate_type,"layer":layer_name,"url":url,"status":status,
+                          "scientific_validated":scientifically_ready,
+                          "available_years":prepared if historical else [],
+                          "validation_note":None if scientifically_ready else validation.get("reason"),
+                          "sources":sources})
+    return jsonify({"camadas":available,"total":len(available),"historical_years":prepared}),200
 
 
 @app.get("/api/climate-sources")
-def list_climate_sources() -> tuple[dict, int]:
-    """Retorna o mapeamento de fontes climáticas para uso na plataforma."""
-    data = []
-    for climate_type, source_names in CLIMATE_SOURCE_BINDINGS.items():
+def list_climate_sources():
+    prepared=_prepared_climate_years()
+    data=[]
+    for climate_type,source_names in CLIMATE_SOURCE_BINDINGS.items():
+        validation=CLIMATE_LAYER_VALIDATION.get(climate_type,{"validated":True})
+        layer_path=Path(__file__).parent/"data"/"climaticas"/f"{CLIMATE_LAYER_BINDINGS.get(climate_type,climate_type)}.geojson"
+        historical=climate_type in ("precipitacao","temperatura") and bool(prepared)
+        ready=historical or (validation.get("validated",True) and layer_path.exists())
         for source_name in source_names:
-            layer_name = CLIMATE_LAYER_BINDINGS.get(climate_type, climate_type)
-            layer_path = Path(__file__).parent / "data" / "climaticas" / f"{layer_name}.geojson"
-            data.append(
-                {
-                    "tipo": climate_type,
-                    "source": source_name,
-                    "status": "disponivel",
-                    "provenance": "fonte oficial vinculada",
-                    "local_layer": layer_path.exists(),
-                    "path": str(layer_path.relative_to(Path(__file__).parent)) if layer_path.exists() else None,
-                }
-            )
-
-    return jsonify({"sources": data, "total": len(data)}), 200
+            data.append({"tipo":climate_type,"source":source_name,
+                         "status":"disponivel" if ready else "fonte_vinculada_sem_camada_analitica",
+                         "scientific_validated":ready,"available_years":prepared if historical else [],
+                         "local_layer":layer_path.exists()})
+    return jsonify({"sources":data,"total":len(data)}),200
 
 
 @app.get("/api/disease-data/<disease_key>")
