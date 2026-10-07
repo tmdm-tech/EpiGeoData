@@ -1822,13 +1822,24 @@
           return pernambucoCartographyCache;
         }
 
-        const response = await fetch("/api/cartography/pernambuco");
-        if (!response.ok) {
-          throw new Error("Falha ao carregar cartografia local de Pernambuco");
+        // Keep one request/promise for the 6+ MB canonical geometry. This avoids
+        // duplicate downloads when map bootstrap and scientific rendering start together.
+        if (!window.__pernambucoCartographyPromise) {
+          window.__pernambucoCartographyPromise = fetch("/api/cartography/pernambuco", { cache: "force-cache" })
+            .then((response) => {
+              if (!response.ok) throw new Error("Falha ao carregar cartografia local de Pernambuco");
+              return response.json();
+            })
+            .then((payload) => {
+              pernambucoCartographyCache = payload;
+              return payload;
+            })
+            .catch((error) => {
+              window.__pernambucoCartographyPromise = null;
+              throw error;
+            });
         }
-
-        pernambucoCartographyCache = await response.json();
-        return pernambucoCartographyCache;
+        return window.__pernambucoCartographyPromise;
       }
 
       function parseDiseasePayload(payload) {
