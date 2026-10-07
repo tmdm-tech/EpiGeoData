@@ -1825,7 +1825,7 @@
         // Keep one request/promise for the 6+ MB canonical geometry. This avoids
         // duplicate downloads when map bootstrap and scientific rendering start together.
         if (!window.__pernambucoCartographyPromise) {
-          window.__pernambucoCartographyPromise = fetch("/api/cartography/pernambuco", { cache: "force-cache" })
+          window.__pernambucoCartographyPromise = fetch("/api/cartography/pernambuco/web", { cache: "force-cache" })
             .then((response) => {
               if (!response.ok) throw new Error("Falha ao carregar cartografia local de Pernambuco");
               return response.json();
@@ -4027,6 +4027,7 @@
               "). " +
               selectedDisease.note
           );
+          reconcileYearsWithInfrastructure({selectLatest:true});
           refreshDemonstratorFromSelection("agravo atualizado");
           await autoGenerateIfReady();
         });
@@ -4041,6 +4042,7 @@
               (Array.from(selectedClimates).join(", ") || "nenhuma") +
               "</b>."
           );
+          reconcileYearsWithInfrastructure({selectLatest:true});
           refreshDemonstratorFromSelection("clima atualizado");
           await autoGenerateIfReady();
         });
@@ -4052,12 +4054,14 @@
         }
 
         const html = [];
-        for (let year = 2000; year <= 2026; year += 1) {
-          const isActive = selectedYears.has(year);
+        const available=availableYearsForSelection();
+        for (const year of available) {
+          const isActive = selectedYears.has(Number(year));
           html.push(
             '<button class="year-chip' + (isActive ? ' active' : '') + '" data-year="' + year + '" type="button">' + year + '</button>'
           );
         }
+        if(!html.length) html.push('<span class="hint">Nenhum ano compatível com o agravo e as dimensões selecionadas.</span>');
         yearButtons.innerHTML = html.join("");
 
         yearButtons.querySelectorAll(".year-chip").forEach((button) => {
@@ -4076,8 +4080,8 @@
       }
 
       selectAllYearsBtn.addEventListener("click", () => {
-        for (let year = 2000; year <= 2026; year += 1) {
-          selectedYears.add(year);
+        for (const year of availableYearsForSelection()) {
+          selectedYears.add(Number(year));
         }
         renderYearButtons();
         updateSelectionStatus();
@@ -4271,6 +4275,37 @@
         });
       });
 
+      let infrastructureCatalog = null;
+
+      function availableYearsForSelection() {
+        const fallback=Array.from({length:27},(_,i)=>2000+i);
+        if(!infrastructureCatalog) return fallback;
+        const key=resolveDiseaseApiKey(selectedDisease.name);
+        const compat=infrastructureCatalog.compatibility?.[key];
+        if(!compat) return [];
+        const needsHistoricalClimate=selectedClimates.has("Precipitacao") || selectedClimates.has("Temperatura");
+        return (needsHistoricalClimate ? compat.climate_overlay_years : compat.epidemiology_years) || [];
+      }
+
+      function reconcileYearsWithInfrastructure({selectLatest=false}={}) {
+        const available=availableYearsForSelection().map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
+        const allowed=new Set(available);
+        for(const year of Array.from(selectedYears)) if(!allowed.has(Number(year))) selectedYears.delete(year);
+        if(selectLatest && selectedYears.size===0 && available.length) selectedYears.add(available[available.length-1]);
+        renderYearButtons();
+        return available;
+      }
+
+      async function loadInfrastructureCatalog() {
+        try {
+          const response=await fetch("/api/infrastructure/catalog",{cache:"no-store"});
+          if(!response.ok) return;
+          infrastructureCatalog=await response.json();
+          reconcileYearsWithInfrastructure({selectLatest:true});
+          updateSelectionStatus();
+        } catch (_) {}
+      }
+
       let scientificReadiness = null;
       async function loadScientificReadiness() {
         try {
@@ -4305,9 +4340,9 @@
       // No scientific product is generated here.
       scheduleMapBootstrap();
       loadScientificReadiness();
+      loadInfrastructureCatalog();
 
       fillGeresSelect();
-      selectedYears.add(2026);
       renderYearButtons();
       // Initial load is intentionally passive: no climate variable is selected
       // and no scientific map/series request runs before explicit user action.
