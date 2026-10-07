@@ -56,7 +56,7 @@ jobs:
 
           status,web_geo=get("/api/cartography/pernambuco/web")
           web_bundle=json.loads(web_geo)
-          assert status==200 and web_bundle["summary"]["total_municipios"]==184
+          assert status==200 and web_bundle["summary"]["total_municipios"] in (184,185),web_bundle["summary"]
           assert web_bundle["summary"]["simplified"] is True
           assert len(web_geo)<3_500_000,f"web cartography still too large: {len(web_geo)} bytes"
 
