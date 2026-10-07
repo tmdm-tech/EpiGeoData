@@ -436,7 +436,9 @@ def generate_professional_choropleth(
         resolved_title = f"{display_name} – {mainland.iloc[0].get('name_muni', code)}, Pernambuco"
 
     # Keep the final export at 300 dpi while bounding the raster buffer.
-    # 9.2 x 5.2 in at 300 dpi = 2760 x 1560 px (~17 MB raw RGBA).\n    # Keep publication DPI while bounding renderer memory and draw time on Render.\n    fig = plt.figure(figsize=(9.2, 5.2), facecolor=BACKGROUND_COLOR)
+    # 9.2 x 5.2 in at 300 dpi = 2760 x 1560 px (~17 MB raw RGBA).
+    # Keep publication DPI while bounding renderer memory and draw time on Render.
+    fig = plt.figure(figsize=(9.2, 5.2), facecolor=BACKGROUND_COLOR)
     grid = fig.add_gridspec(1, 2, width_ratios=[4.6, 1.55], wspace=0.05)
     ax = fig.add_subplot(grid[0,0])
     panel_ax = fig.add_subplot(grid[0,1])
