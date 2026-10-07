@@ -8,30 +8,84 @@ permissions:
 jobs:
   cartography:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - name: Wait for Render and test choropleth + Local Moran
+      - name: Wait for Render and test complete scientific product matrix
         run: |
           python - <<'PY'
           import json,time
           from urllib.request import Request,urlopen
+          from urllib.error import HTTPError
           base="https://epigeodata.onrender.com"
-          def post(payload):
+
+          def get(path, timeout=90):
               last=None
-              for _ in range(10):
+              for _ in range(12):
                   try:
-                      req=Request(base+"/api/maps/professional-overlay",data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"},method="POST")
-                      with urlopen(req,timeout=90) as r:
-                          body=json.loads(r.read())
-                          assert r.status==200 and body.get("image_url")
-                      with urlopen(base+body["image_url"],timeout=60) as img:
-                          data=img.read()
-                          assert img.status==200 and len(data)>10000
-                      return body
+                      with urlopen(base+path,timeout=timeout) as r:
+                          return r.status,r.read()
                   except Exception as e:
-                      last=e; time.sleep(20)
+                      last=e; time.sleep(15)
               raise last
-          post({"disease_key":"dengue","analysis_mode":"choropleth","selected_years":[2024]})
-          post({"disease_key":"dengue","analysis_mode":"moran","selected_years":[2024]})
-          print("PASS production choropleth and Local Moran PNG")
+
+          def post(path,payload,expected=200,timeout=120):
+              last=None
+              for _ in range(12):
+                  try:
+                      req=Request(base+path,data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"},method="POST")
+                      with urlopen(req,timeout=timeout) as r:
+                          body=r.read()
+                          assert r.status==expected,(path,r.status,body[:500])
+                          return json.loads(body)
+                  except HTTPError as e:
+                      body=e.read()
+                      if e.code==expected: return json.loads(body)
+                      last=RuntimeError(f"{path}: HTTP {e.code}: {body[:800]!r}")
+                  except Exception as e:
+                      last=e
+                  time.sleep(15)
+              raise last
+
+          status,infra_raw=get("/api/infrastructure/catalog")
+          infra=json.loads(infra_raw)
+          assert status==200 and infra.get("schema_version")>=2
+          assert infra["climate"]["prepared_years"],"historical climate years missing"
+          dengue=infra["compatibility"]["dengue"]
+          assert set(dengue["climate_overlay_years"]).issubset(set(dengue["epidemiology_years"]))
+          assert set(dengue["climate_overlay_years"]).issubset(set(infra["climate"]["prepared_years"]))
+
+          status,web_geo=get("/api/cartography/pernambuco/web")
+          web_bundle=json.loads(web_geo)
+          assert status==200 and web_bundle["summary"]["total_municipios"]==184
+          assert web_bundle["summary"]["simplified"] is True
+          assert len(web_geo)<3_500_000,f"web cartography still too large: {len(web_geo)} bytes"
+
+          def map_product(mode,years,climates=None):
+              body=post("/api/maps/professional-overlay",{
+                  "disease_key":"dengue","analysis_mode":mode,
+                  "selected_years":years,"selected_climates":climates or []
+              })
+              assert body.get("ok") is True and body.get("image_url"),(mode,body)
+              status,png=get(body["image_url"],timeout=90)
+              assert status==200 and len(png)>10000,(mode,len(png))
+              print("PASS",mode,len(png),"bytes",flush=True)
+
+          for mode in ("choropleth","kernel","heat","density","moran"):
+              map_product(mode,[2024])
+          map_product("overlay",[2024],["temperatura","precipitacao"])
+          map_product("series",[2023,2024])
+
+          gwr=post("/api/maps/gwr-runtime",{
+              "disease_key":"esquistossomose","selected_years":[2021],
+              "selected_climates":["temperatura","precipitacao"]
+          })
+          assert gwr.get("ok") is True and gwr.get("persisted") is True
+          assert gwr.get("joined_geojson") and gwr.get("maps")
+          status,joined=get(gwr["joined_geojson"])
+          assert status==200 and len(joined)>1000
+          for label,url in gwr["maps"].items():
+              status,png=get(url)
+              assert status==200 and len(png)>10000,(label,len(png))
+          print("PASS GWR persisted signature",flush=True)
+          print("PASS complete production scientific matrix + infrastructure + lightweight web cartography",flush=True)
           PY
