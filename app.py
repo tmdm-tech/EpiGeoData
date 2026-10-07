@@ -966,6 +966,60 @@ def _load_pernambuco_cartography_lightweight() -> tuple[dict, dict, list[dict[st
     return raw,state,catalog,DEFAULT_PERNAMBUCO_CARTOGRAPHY
 
 
+@lru_cache(maxsize=1)
+def _load_pernambuco_cartography_web() -> tuple[dict, dict, list[dict[str, str]], Path]:
+    """Simplified topology-preserving geometry for Leaflet only.
+
+    Scientific analyses continue to use DEFAULT_PERNAMBUCO_CARTOGRAPHY at full
+    resolution. The web bundle removes the previous duplicated state payload
+    and simplifies municipal boundaries in geographic coordinates.
+    """
+    from shapely.geometry import shape, mapping
+    from shapely.ops import unary_union
+    raw, _, catalog, source_path = _load_pernambuco_cartography_lightweight()
+    simplified_features=[]
+    state_geometries=[]
+    for feature in raw.get("features") or []:
+        geom_raw=feature.get("geometry")
+        if not geom_raw:
+            continue
+        geom=shape(geom_raw)
+        if geom.is_empty:
+            continue
+        state_geometries.append(geom)
+        simplified=geom.simplify(0.0015, preserve_topology=True)
+        props=feature.get("properties") or {}
+        simplified_features.append({
+            "type":"Feature",
+            "properties":{
+                "code_muni":_normalize_ibge_code(props.get("code_muni") or props.get("id") or ""),
+                "name_muni":str(props.get("name_muni") or props.get("nome") or "").strip(),
+            },
+            "geometry":mapping(simplified),
+        })
+    municipalities={"type":"FeatureCollection","features":simplified_features}
+    state_geom=unary_union(state_geometries).simplify(0.0015,preserve_topology=True)
+    state={"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Pernambuco"},"geometry":mapping(state_geom)}]}
+    return municipalities,state,catalog,source_path
+
+
+@app.get("/api/cartography/pernambuco/web")
+def get_pernambuco_cartography_web():
+    try:
+        municipalities_geojson,state_geojson,catalog,source_path=_load_pernambuco_cartography_web()
+    except FileNotFoundError as error:
+        return {"error":str(error)},404
+    response=jsonify({
+        "ok":True,
+        "purpose":"web_visualization_only",
+        "source":str(source_path.relative_to(Path(__file__).parent)),
+        "summary":{"total_municipios":len(catalog),"crs":"EPSG:4674","simplified":True,"tolerance_degrees":0.0015},
+        "state":state_geojson,"municipalities":municipalities_geojson,"catalog":catalog,
+    })
+    response.headers["Cache-Control"]="public, max-age=86400, immutable"
+    return response,200
+
+
 @app.get("/api/cartography/pernambuco")
 def get_pernambuco_cartography() -> tuple[dict, int]:
     try:
