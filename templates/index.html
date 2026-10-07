@@ -2066,60 +2066,51 @@
       }
 
       async function drawSelectedClimateLayers() {
-        if (!map) {
-          return;
-        }
+        if (!map) return;
+        if (climateOverlayLayer) { map.removeLayer(climateOverlayLayer); climateOverlayLayer=null; }
+        if (selectedClimates.size===0) return;
 
-        if (climateOverlayLayer) {
-          map.removeLayer(climateOverlayLayer);
-          climateOverlayLayer = null;
-        }
+        const baseBundle=await loadPernambucoCartographyBundle();
+        const municipalityFeatures=baseBundle.municipalities?.features || [];
+        climateOverlayLayer=L.layerGroup([]).addTo(map);
+        const allFeatures=[];
 
-        if (selectedClimates.size === 0) {
-          return;
-        }
-
-        const allFeatures = [];
         for (const climateLabel of selectedClimates) {
-          const geo = await fetchClimateLayerGeojson(climateLabel);
-          if (!geo || !geo.features || geo.features.length === 0) {
+          const geo=await fetchClimateLayerGeojson(climateLabel);
+          if (!geo) continue;
+
+          // Historical INMET dimensions arrive as municipality×year values.
+          if (Array.isArray(geo.values)) {
+            const valueMap=new Map(geo.values.filter(x=>Number.isFinite(x.value)).map(x=>[String(x.municipio_ibge),Number(x.value)]));
+            const vals=Array.from(valueMap.values());
+            if(!vals.length) continue;
+            const min=Math.min(...vals), max=Math.max(...vals), span=Math.max(max-min,1e-9);
+            const palette=climateLabel==="Temperatura"
+              ? ["#313695","#74add1","#ffffbf","#f46d43","#a50026"]
+              : ["#f7fbff","#9ecae1","#4292c6","#2171b5","#084594"];
+            const colorFor=(v)=>palette[Math.min(palette.length-1,Math.floor(((v-min)/span)*palette.length))];
+            const features=municipalityFeatures.filter(ft=>valueMap.has(String(ft.properties?.code_muni||""))).map(ft=>({
+              ...ft,properties:{...(ft.properties||{}),climate_value:valueMap.get(String(ft.properties?.code_muni||"")),climate_label:climateLabel,year:geo.year}
+            }));
+            const layer=L.geoJSON({type:"FeatureCollection",features},{
+              style:(ft)=>({color:"#4a4a55",weight:.65,fillColor:colorFor(ft.properties.climate_value),fillOpacity:.55}),
+              onEachFeature:(ft,l)=>l.bindTooltip((ft.properties.name_muni||"Município")+": "+Number(ft.properties.climate_value).toFixed(2)+" — "+climateLabel+" ("+geo.year+")")
+            });
+            climateOverlayLayer.addLayer(layer);
+            allFeatures.push(...features);
             continue;
           }
 
-          const layer = L.geoJSON(geo, {
-            style: climateLayerStyle(climateLabel),
-            pointToLayer: (_, latlng) =>
-              L.circleMarker(latlng, {
-                radius: 4,
-                color: "#233245",
-                weight: 0.8,
-                fillColor: climateOverlayColor[climateLabel] || "#4d87d7",
-                fillOpacity: 0.45,
-              }),
+          if (!geo.features?.length) continue;
+          const layer=L.geoJSON(geo,{
+            style:climateLayerStyle(climateLabel),
+            pointToLayer:(_,latlng)=>L.circleMarker(latlng,{radius:4,color:"#233245",weight:.8,fillColor:climateOverlayColor[climateLabel]||"#4d87d7",fillOpacity:.45})
           });
-
-          layer.eachLayer((featureLayer) => {
-            const featureGeo = featureLayer.toGeoJSON();
-            if (featureGeo) {
-              allFeatures.push(featureGeo);
-            }
-          });
-
-          if (!climateOverlayLayer) {
-            climateOverlayLayer = L.layerGroup([]).addTo(map);
-          }
           climateOverlayLayer.addLayer(layer);
+          layer.eachLayer(fl=>{const ft=fl.toGeoJSON();if(ft)allFeatures.push(ft);});
         }
 
-        if (allFeatures.length > 0) {
-          currentMapGeoJson = {
-            type: "FeatureCollection",
-            features: [
-              ...featureCollectionFromGeoJson(getCurrentBaseFeatureCollection() || estadoGeoCache).features,
-              ...allFeatures,
-            ],
-          };
-        }
+        if(allFeatures.length) currentMapGeoJson={type:"FeatureCollection",features:allFeatures};
       }
       function clearOverlayLayer() {
         if (overlayLayer && map) {
