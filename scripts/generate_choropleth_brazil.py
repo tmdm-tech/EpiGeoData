@@ -492,7 +492,7 @@ def generate_professional_choropleth(
         work = mainland.copy()
         y = pd.to_numeric(work["total_casos"], errors="coerce").fillna(0).to_numpy(dtype=float)
         xy = np.column_stack([work.geometry.centroid.x.to_numpy(), work.geometry.centroid.y.to_numpy()])
-        grid_n = 160
+        grid_n = 120
         minx, miny, maxx, maxy = work.total_bounds
         gx, gy = np.meshgrid(np.linspace(minx, maxx, grid_n), np.linspace(miny, maxy, grid_n))
         span = max(maxx-minx, maxy-miny)
@@ -500,12 +500,13 @@ def generate_professional_choropleth(
         surface = np.zeros_like(gx, dtype=float)
         for (px, py), wt in zip(xy, y):
             surface += float(wt) * np.exp(-((gx-px)**2 + (gy-py)**2) / (2 * bandwidth**2))
-        # Mask the raster outside the selected territorial polygon.
-        from shapely.geometry import Point
-        boundary=work.geometry.union_all()
-        flat=np.column_stack([gx.ravel(),gy.ravel()])
-        mask=np.fromiter((boundary.covers(Point(x,y)) for x,y in flat),dtype=bool,count=len(flat)).reshape(gx.shape)
-        surface=np.ma.array(surface,mask=~mask)
+        # Rasterize only polygon containment at grid resolution. Point-by-point
+        # Shapely predicates were costly and held a Gunicorn worker too long.
+        from shapely import contains_xy
+        boundary = work.geometry.union_all()
+        mask = contains_xy(boundary, gx, gy)
+        surface = np.ma.array(surface, mask=~mask)
+        del mask, boundary
         cmap_name="turbo" if mode=="kernel" else "inferno"
         ax.imshow(surface, extent=[minx,maxx,miny,maxy], origin="lower", cmap=cmap_name, alpha=.76, zorder=1)
         work.boundary.plot(ax=ax, color="#707070", linewidth=.32, zorder=2)
