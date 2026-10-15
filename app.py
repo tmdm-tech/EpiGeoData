@@ -2017,6 +2017,12 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
     geres = str(payload.get("geres", "ALL")).strip()
     municipio_id = str(payload.get("municipio_id", "")).strip()
     cache_key = (disease_key, title, analysis_mode, tuple(selected_years), selected_climates, socio_variable, socio_scope, geres, municipio_id)
+    # Prevent simultaneous high-resolution exports from exhausting the small
+    # Render worker. Requests are serialized, and cached outputs are reused.
+    import threading
+    global _professional_render_lock
+    if "_professional_render_lock" not in globals():
+        _professional_render_lock = threading.Lock()
     cached = PROFESSIONAL_MAP_CACHE.get(cache_key)
     if cached:
         cached_path = Path(__file__).parent / "static" / cached["relative_path"]
@@ -2025,6 +2031,8 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
             response["cache_hit"] = True
             return jsonify(response), 200
 
+    if not _professional_render_lock.acquire(blocking=False):
+        return {"error": "Renderização em andamento; tente novamente após a conclusão."}, 503
     try:
         from scripts.generate_choropleth_brazil import generate_professional_choropleth
         # Stable filename makes identical requests reusable inside the Render
@@ -2042,6 +2050,9 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
     except Exception as error:
         app.logger.exception("professional-overlay failed")
         return {"error": "Falha ao gerar mapa profissional", "details": f"{type(error).__name__}: {error}"}, 500
+
+    finally:
+        _professional_render_lock.release()
 
     static_root = Path(__file__).parent / "static"
     relative = result.output_file.relative_to(static_root)
