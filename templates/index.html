@@ -1903,7 +1903,7 @@
           const normalized = Math.min(1, avg / maxVal);
           return Math.max(0, Math.min(100, Math.round(normalized * 100)));
         }
-        return aggravoBaseScore[selectedDisease.name] || 70;
+        return null;
       }
 
       function getFeatureMunicipioName(feature) {
@@ -2180,7 +2180,7 @@
 
       function normalizeUiStatus(value) {
         const allowed = new Set(["disponivel", "indisponivel", "pendente", "aguardando", "ativo"]);
-        return allowed.has(value) ? value : "aguardando";
+        return allowed.has(value) ? value : "indisponivel";
       }
 
       function renderSelectionStatusRows(rows) {
@@ -2237,7 +2237,9 @@
             if (!climateApi) {
               return { climate, ok: false };
             }
-            const ok = await probeEndpointStatus("/api/climate-layers/" + climateApi);
+            const year = Array.from(selectedYears).map(Number).sort((a,b)=>a-b)[0];
+            const historical = (climateApi === "precipitacao" || climateApi === "temperatura") && Number.isFinite(year);
+            const ok = await probeEndpointStatus("/api/climate-layers/" + climateApi + (historical ? "?year=" + year : ""));
             return { climate, ok };
           }));
 
@@ -2252,7 +2254,7 @@
         const years = Array.from(selectedYears).sort((a, b) => a - b);
         rows.push({
           label: "Anos de análise: " + (years.length > 0 ? years.join(", ") : "nenhum"),
-          status: years.length > 0 ? "ativo" : "aguardando"
+          status: years.length > 0 ? "ativo" : "indisponivel"
         });
 
         rows.push({
@@ -2278,24 +2280,9 @@
         renderSelectionStatusRows(rows);
       }
 
-      function fallbackSocioValue(variable, municipioId) {
-        const seed = String(municipioId)
-          .split("")
-          .reduce((acc, digit) => acc + Number(digit), 0);
-
-        if (variable === "escolaridade") {
-          return 55 + (seed % 35);
-        }
-        if (variable === "raca_cor") {
-          return 30 + (seed % 60);
-        }
-        if (variable === "sexo") {
-          return 45 + (seed % 10);
-        }
-        if (variable === "idade") {
-          return 24 + (seed % 22);
-        }
-        return 800 + (seed % 2800);
+      function fallbackSocioValue() {
+        // No fabricated municipal values: missing official records stay missing.
+        return null;
       }
 
       function addClimateLegend() {
