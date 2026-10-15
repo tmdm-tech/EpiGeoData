@@ -1717,7 +1717,7 @@
       const socioValueCache = new Map();
       let socioMunicipioValues = new Map();
       let diseaseMunicipioValues = new Map();
-      let diseaseDataSource = "Estimativa padrão";
+      let diseaseDataSource = "Dados oficiais ainda não carregados";
       let selectionStatusRequestId = 0;
       const diseaseDataCache = new Map();
       let currentMapGeoJson = null;
@@ -1890,7 +1890,7 @@
           diseaseDataSource = source;
         } catch (error) {
           diseaseMunicipioValues = new Map();
-          diseaseDataSource = "Estimativa padrão";
+          diseaseDataSource = "Dados oficiais indisponíveis";
           diseaseDataCache.set(key, { values: diseaseMunicipioValues, source: diseaseDataSource });
         }
       }
@@ -2622,20 +2622,20 @@
         const hourFactor = 0.85 + (Math.sin((now.getHours() / 24) * Math.PI * 2) + 1) * 0.075;
 
         const climaticRaw = Array.from(selectedClimates).reduce((acc, climate) => acc + (climateWeight[climate] || 0), 0);
-        const climaticScore = Math.round(Math.min(100, climaticRaw * hourFactor));
+        const climaticScore = null; // no observed climate indicator can be inferred from selection weights
 
         const aggravoScore = resolveDiseaseScore();
 
-        let demographicScore = 56;
+        let demographicScore = null;
         const vals = Array.from(socioMunicipioValues.values()).map((item) => item.value).filter((value) => Number.isFinite(value));
         if (vals.length > 0) {
           const avg = vals.reduce((acc, n) => acc + n, 0) / vals.length;
-          demographicScore = Math.max(40, Math.min(99, Math.round((avg % 100) || 56)));
+          demographicScore = null; // require a defined, validated indicator scale
         } else if (activeGeres !== "ALL") {
-          demographicScore = Math.min(95, 58 + (geresMunicipios[activeGeres] || []).length);
+          demographicScore = null;
         }
 
-        const integratedScore = Math.round(climaticScore * 0.34 + aggravoScore * 0.41 + demographicScore * 0.25);
+        const integratedScore = null; // no unvalidated composite score
         return {
           climaticScore,
           aggravoScore,
