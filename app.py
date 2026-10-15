@@ -23,6 +23,7 @@ app = Flask(__name__)
 
 REALTIME_CACHE: dict[str, tuple[float, dict]] = {}
 PROFESSIONAL_MAP_CACHE: dict[tuple, dict] = {}
+PROFESSIONAL_MAP_CACHE_MAX_ENTRIES = 24
 GWR_RUNTIME_CACHE: dict[tuple, dict] = {}
 PREPARED_HEATMAP_CACHE: dict[str, dict] = {}
 REALTIME_CACHE_TTL_SECONDS = 20 * 60
@@ -2065,6 +2066,23 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
         "socio_variable": socio_variable, "socio_scope": socio_scope, "geres": geres, "municipio_id": municipio_id,
     }
     PROFESSIONAL_MAP_CACHE[cache_key] = {"relative_path": relative.as_posix(), "payload": response}
+    # Bound both cached metadata and generated PNGs. Never remove a file
+    # referenced by an active cache entry. Keep this within the render lock
+    # to avoid concurrent cleanup of an in-progress export.
+    if len(PROFESSIONAL_MAP_CACHE) > PROFESSIONAL_MAP_CACHE_MAX_ENTRIES:
+        while len(PROFESSIONAL_MAP_CACHE) > PROFESSIONAL_MAP_CACHE_MAX_ENTRIES:
+            _, evicted = next(iter(PROFESSIONAL_MAP_CACHE.items()))
+            PROFESSIONAL_MAP_CACHE.pop(next(iter(PROFESSIONAL_MAP_CACHE)))
+            old_relative = evicted.get("relative_path", "")
+            if old_relative and old_relative not in {
+                entry.get("relative_path") for entry in PROFESSIONAL_MAP_CACHE.values()
+            }:
+                old_file = static_root / old_relative
+                try:
+                    if old_file.is_file() and old_file.parent.resolve() == (static_root / "maps").resolve():
+                        old_file.unlink()
+                except OSError:
+                    app.logger.warning("Could not remove expired professional map %s", old_file)
     return jsonify(response), 200
 
 @app.route("/download")
