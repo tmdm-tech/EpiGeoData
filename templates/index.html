@@ -2572,42 +2572,12 @@
             return;
           }
 
-          // Prepared heatmap is a visual fallback only for compatible non-GWR
-          // display modes. It is never labelled as the requested scientific method.
-          if (!["heat", "overlay"].includes(currentMode)) {
-            lastProfessionalMapUrl = "";
-            professionalMapPreview.classList.remove("visible");
-            professionalMapStatus.innerHTML =
-              "<strong>Cartografia:</strong> falha em " + describeMode(currentMode) + " — " + String(error.message || error);
-            return;
-          }
+          lastProfessionalMapUrl = "";
+          lastProfessionalMapSignature = "";
+          professionalMapPreview.removeAttribute("src");
+          professionalMapPreview.classList.remove("visible");
+          professionalMapStatus.textContent = "Produto indisponível para a seleção: " + String(error.message || error);
 
-          try {
-            const preparedResponse = await fetch("/api/maps/prepared-heatmap-overlay", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ input_file: preparedHeatmapInputName }),
-              signal: controller.signal
-            });
-            if (!preparedResponse.ok) throw new Error("Falha ao gerar sobreposição preparada");
-            const preparedPayload = await preparedResponse.json();
-            if (expectedSerial !== realtimeRefreshSerial || requestSignature !== currentProfessionalMapSignature()) return;
-            const combinedMap = preparedPayload?.maps?.combined;
-            if (!combinedMap) throw new Error("Resposta sem mapa combinado da sobreposição");
-            lastProfessionalMapUrl = combinedMap;
-            lastProfessionalMapSignature = requestSignature;
-            professionalMapPreview.src = combinedMap;
-            professionalMapPreview.classList.add("visible");
-            professionalMapStatus.innerHTML =
-              "<strong>Cartografia:</strong> visualização preparada de contingência (não substitui " +
-              describeMode(currentMode) + ")";
-          } catch (fallbackError) {
-            if (fallbackError?.name === "AbortError") throw fallbackError;
-            lastProfessionalMapUrl = "";
-            professionalMapPreview.classList.remove("visible");
-            professionalMapStatus.innerHTML =
-              "<strong>Cartografia:</strong> falha ao gerar " + describeMode(currentMode);
-          }
         } finally {
           if (professionalMapAbortController === controller) professionalMapAbortController = null;
         }
