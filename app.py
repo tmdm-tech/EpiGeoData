@@ -2067,12 +2067,11 @@ def generate_professional_overlay_map() -> tuple[dict, int]:
     }
     PROFESSIONAL_MAP_CACHE[cache_key] = {"relative_path": relative.as_posix(), "payload": response}
     # Bound both cached metadata and generated PNGs. Never remove a file
-    # referenced by an active cache entry. Keep this within the render lock
-    # to avoid concurrent cleanup of an in-progress export.
+    # referenced by an active cache entry. Eviction only targets finished PNGs.
     if len(PROFESSIONAL_MAP_CACHE) > PROFESSIONAL_MAP_CACHE_MAX_ENTRIES:
         while len(PROFESSIONAL_MAP_CACHE) > PROFESSIONAL_MAP_CACHE_MAX_ENTRIES:
-            _, evicted = next(iter(PROFESSIONAL_MAP_CACHE.items()))
-            PROFESSIONAL_MAP_CACHE.pop(next(iter(PROFESSIONAL_MAP_CACHE)))
+            oldest_key = next(iter(PROFESSIONAL_MAP_CACHE))
+            evicted = PROFESSIONAL_MAP_CACHE.pop(oldest_key)
             old_relative = evicted.get("relative_path", "")
             if old_relative and old_relative not in {
                 entry.get("relative_path") for entry in PROFESSIONAL_MAP_CACHE.values()
