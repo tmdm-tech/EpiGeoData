@@ -352,6 +352,16 @@ def render_side_panel(ax: plt.Axes, title: str, subtitle: str, source_note: str,
     ax.text(0.0, 0.21, source_note, fontsize=8.8, color="#c9d9ff", va="top", wrap=True)
 
 
+@lru_cache(maxsize=1)
+def load_simplified_pernambuco_geometry() -> gpd.GeoDataFrame:
+    """Reuse projected and simplified cartography across map requests."""
+    base = load_pernambuco_municipalities()
+    geom = base[["codigo_ibge", "join_name", "geometry"]].to_crs(TARGET_CRS)
+    geom = geom.copy()
+    geom["geometry"] = geom.geometry.simplify(25.0, preserve_topology=True)
+    return geom
+
+
 def generate_professional_choropleth(
     disease_key: str,
     title: str | None = None,
@@ -397,10 +407,14 @@ def generate_professional_choropleth(
 
     # Layout de publicacao: enquadramento pelo continente. Fernando de Noronha nao
     # pode ampliar artificialmente a extensao do mapa principal.
-    gdf = municipalities_pe.to_crs(TARGET_CRS).copy()
-    sys.setrecursionlimit(max(sys.getrecursionlimit(), 10000))
-    gdf["geometry"] = gdf.geometry.simplify(25.0, preserve_topology=True)
-    mainland = gdf[~gdf["join_name"].str.contains("FERNANDO DE NORONHA", na=False)].copy()
+    # Simplified municipal boundaries are independent of disease/year and can be
+    # reused. Cache only geometry; never cache epidemiological observations.
+    base_geometry = load_simplified_pernambuco_geometry()
+    gdf = base_geometry.merge(
+        municipalities_pe.drop(columns=["geometry", "join_name"], errors="ignore"),
+        on="codigo_ibge", how="left", validate="one_to_one",
+    )
+    mainland = gdf.loc[~gdf["join_name"].str.contains("FERNANDO DE NORONHA", na=False)].copy()
 
     # Territorial filter must alter the analytical geography, not only the title.
     # GERES composition follows the same official SES-PE grouping exposed by the frontend.
