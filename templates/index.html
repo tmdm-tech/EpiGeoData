@@ -4322,8 +4322,7 @@
           infrastructureCatalog=await response.json();
           reconcileYearsWithInfrastructure({selectLatest:true});
           updateSelectionStatus();
-          // Do not launch a heavyweight renderer during page bootstrap. The
-          // interactive preview is generated after an explicit scientific selection.
+          if (selectedYears.size) scheduleRealtimeScientificRefresh("catálogo oficial carregado");
         } catch (_) {}
       }
 
